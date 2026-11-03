@@ -151,6 +151,7 @@ body.viewonly .btn-s{display:none}
 .gatebox{background:var(--surface); color:var(--fg); border:1px solid var(--line); border-radius:12px; padding:20px; width:100%; max-width:360px; box-sizing:border-box}
 .gatebox input{width:100%; margin-top:12px}
 .gatebox .primary{width:100%; margin-top:10px}
+.alertng{background:var(--ng-soft); color:var(--ng); font-weight:700; border:1px solid var(--ng)}
 .pbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px}
 .pbar input{flex:0 1 160px}
 @media (prefers-reduced-motion: no-preference){ .chip, .primary, .ghost{transition:background .15s, color .15s} }
@@ -174,6 +175,7 @@ body.viewonly .btn-s{display:none}
   </nav>
 
   <section id="sec-entry">
+    <div id="planAlert" class="banner alertng" role="alert" hidden></div>
     <div class="card">
       <div class="lbl">生産日（ロット）</div>
       <div id="chips" class="chips"></div>
@@ -526,6 +528,12 @@ function applyPlan() {
   }
   const n = plan.length, ok = plan.filter(p => done.has(p.part)).length;
   $("#planSum").textContent = `必要 ${n} 品番 ／ 登録済み ${ok} ／ 未入力 ${n - ok}`;
+  const miss = plan.filter(p => !done.has(p.part));
+  const al = $("#planAlert");
+  al.hidden = miss.length === 0;
+  al.textContent = miss.length
+    ? `【未入力 ${miss.length} 品番】${state.curLot ? lotIso(state.curLot) : ""} の造型品番に記録がありません：${miss.map(p => p.part).join("、")}`
+    : "";
   $("#planList").innerHTML = plan.map(p => {
     const d = done.has(p.part);
     const nm = OFFICIAL[p.part] || p.name || "";
