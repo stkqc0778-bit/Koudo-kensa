@@ -2,7 +2,7 @@
 // token は Apps Script の TOKEN と同じ値にする（最初から同じ値が入っている）。
 window.APP_CONFIG = {
   appName: "硬度日報",
-  syncUrl: "",
+  syncUrl: "https://script.google.com/macros/s/AKfycbzjNYDi6EAjHn7VIl9f8phgJCSaiPE8-zlIE59Dj24QEZ02s36BW5k28HR7Q7WWgZ8wdA/exec",
   token: "O7jPia3Cezuh7GXbgyesLTvg",
   lookbackDays: 120
 };
