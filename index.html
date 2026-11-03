@@ -185,6 +185,12 @@ body.viewonly .btn-s{display:none}
       <div class="status" id="status"></div>
     </div>
 
+    <div class="card" id="planCard" hidden>
+      <div class="rowhead"><span>造型日報の品番</span><span class="hint" id="planSum"></span></div>
+      <div id="planList"></div>
+      <p class="hint">この生産日の造型日報にある品番です。未入力の品番は、下の測定入力に行を作ってあります（測定値を入れるだけ）。</p>
+    </div>
+
     <div class="card">
       <div class="rowhead">
         <span>測定入力</span>
@@ -241,6 +247,7 @@ body.viewonly .btn-s{display:none}
 
 <script src="config.js"></script>
 <script src="master.js"></script>
+<script src="plan.js"></script>
 <script>
 const MASTER = HARDNESS_MASTER.spec;          // 硬度規格シート由来: [{part, cust, spec}]
 const NAMES = HARDNESS_MASTER.names;            // 硬度2025/2026シート由来: 品番 -> 品名
@@ -262,7 +269,7 @@ const state = {
   lots: [], curLot: 0,
   rowsByLot: {},
   tab: "entry", listQ: "", armed: null, saving: false,
-  period: null, periodKind: "30", listRows: null, listState: "idle", listErr: ""
+  period: null, periodKind: "30", listRows: null, listState: "idle", listErr: "", planApplied: {}
 };
 
 const $ = s => document.querySelector(s);
@@ -379,6 +386,7 @@ function rowHtml(r, i) {
 }
 
 function renderRows() {
+  applyPlan();
   const list = rows();
   if (!list.length) list.push(newRow());
   const head = `<div class="lhead" aria-hidden="true"><span>品番</span><span>品名</span><span>測定値①</span><span>測定値②</span><span>平均</span><span>規格</span><span>判定</span><span></span></div>`;
@@ -488,8 +496,47 @@ function setPeriod(kind) {
   fetchPeriod();
 }
 
+// ---- 造型日報の必要品番 ----
+const PLAN = window.ZOUKEI_PLAN || {};
+function applyPlan() {
+  const plan = PLAN[state.curLot];
+  const card = $("#planCard");
+  if (!plan) { card.hidden = true; return; }
+  card.hidden = false;
+  const done = new Set(state.records.filter(r => r.lot === state.curLot).map(r => r.part));
+  // 造型計画から作った空の行で、あとから登録済みになったものは外す（入力済みの行は残す）
+  let removed = false;
+  const cur = rows();
+  for (let i = cur.length - 1; i >= 0; i--) {
+    const r = cur[i];
+    if (r.fromPlan && !r.m1 && !r.m2 && done.has(canonPart(r.part) || r.part)) { cur.splice(i, 1); removed = true; }
+  }
+  if (removed && state.tab === "entry") renderRows();
+  if (!state.planApplied[state.curLot]) {
+    state.planApplied[state.curLot] = true;
+    const list = rows();
+    const have = new Set(list.map(r => canonPart(r.part) || r.part));
+    let added = 0;
+    plan.forEach(p => {
+      if (done.has(p.part) || have.has(p.part)) return;
+      list.push({ ...newRow(), part: p.part, name: OFFICIAL[p.part] || "", spec: specFor(p.part), fromPlan: true });
+      added++;
+    });
+    if (added && state.tab === "entry") renderRows();
+  }
+  const n = plan.length, ok = plan.filter(p => done.has(p.part)).length;
+  $("#planSum").textContent = `必要 ${n} 品番 ／ 登録済み ${ok} ／ 未入力 ${n - ok}`;
+  $("#planList").innerHTML = plan.map(p => {
+    const d = done.has(p.part);
+    const nm = OFFICIAL[p.part] || p.name || "";
+    const tags = [p.material, p.master ? "" : "マスター外", p.raw !== p.part ? `造型表記 ${p.raw}` : ""].filter(Boolean).join(" ・ ");
+    return `<div class="sg" style="cursor:default"><b>${esc(p.part)}</b><span>${esc(nm)}　${esc(tags)}</span><span class="badge ${d ? "ok" : "warn"}">${d ? "登録済み" : "未入力"}</span></div>`;
+  }).join("");
+}
+
 function renderAll() {
   refreshRecords();
+  applyPlan();
   renderChips();
   renderStatus();
   renderToday();
