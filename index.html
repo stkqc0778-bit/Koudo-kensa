@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1e4fd8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>硬度日報</title>
+</head>
+<body>
+<style>
+/* Layout: one column card stack on phones; entry rows become a 2-column grid. */
+:root{
+  color-scheme: light;
+  --bg:#f3f5fa; --surface:#ffffff; --fg:#14213d; --muted:#5a6685; --line:#d6dcea;
+  --primary:#1e4fd8; --primary-fg:#ffffff; --primary-soft:#e7edfb;
+  --ok:#17704a; --ok-soft:#dff3e8; --ng:#b3261e; --ng-soft:#fbe3e0; --warn:#8a5300; --warn-soft:#fff1d1;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#0d1322; --surface:#162040; --fg:#e7ecf8; --muted:#9ba7c6; --line:#2b3862;
+    --primary:#7b9cff; --primary-fg:#0d1322; --primary-soft:#1d2b56;
+    --ok:#63d59c; --ok-soft:#173a2a; --ng:#ff8c80; --ng-soft:#3d201d; --warn:#f2c466; --warn-soft:#3a2e12;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0d1322; --surface:#162040; --fg:#e7ecf8; --muted:#9ba7c6; --line:#2b3862;
+  --primary:#7b9cff; --primary-fg:#0d1322; --primary-soft:#1d2b56;
+  --ok:#63d59c; --ok-soft:#173a2a; --ng:#ff8c80; --ng-soft:#3d201d; --warn:#f2c466; --warn-soft:#3a2e12;
+}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family: Meiryo, "メイリオ", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  font-size:14px; line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));
+  padding-right:max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap{max-width:1100px; margin:0 auto; padding-block:14px 56px}
+button{font:inherit; cursor:pointer}
+input,select{
+  font:inherit; color:var(--fg); background:var(--surface);
+  border:1px solid var(--line); border-radius:8px; padding:9px 10px; min-width:0; box-sizing:border-box;
+}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--primary); outline-offset:1px}
+.top{
+  background:var(--primary); color:var(--primary-fg); border-radius:12px;
+  padding:14px 18px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.ttl{font-size:20px; font-weight:700; letter-spacing:.06em}
+.sub{font-size:12px; opacity:.88; font-variant-numeric:tabular-nums}
+.logo{font-weight:700; font-size:13px; border:1px solid rgba(255,255,255,.7); padding:6px 10px; border-radius:6px; white-space:nowrap}
+.tabs{display:flex; gap:8px; margin-top:12px}
+.tabs button{
+  background:var(--surface); color:var(--primary); border:1px solid var(--primary);
+  border-radius:999px; padding:8px 16px;
+}
+.tabs button[aria-selected="true"]{background:var(--primary); color:var(--primary-fg)}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; min-width:0}
+.lbl{font-size:12px; color:var(--muted); letter-spacing:.06em; margin-bottom:8px}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{
+  border:1px solid var(--primary); background:var(--surface); color:var(--primary);
+  border-radius:999px; padding:8px 14px;
+}
+.chip.on{background:var(--primary); color:var(--primary-fg); font-weight:700}
+.adddate{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center}
+.ghost{background:transparent; color:var(--primary); border:1px solid var(--primary); border-radius:8px; padding:8px 12px}
+.primary{background:var(--primary); color:var(--primary-fg); border:0; border-radius:8px; padding:12px 20px; font-weight:700}
+.primary:disabled{opacity:.45; cursor:not-allowed}
+.hint{color:var(--muted); font-size:12px; margin:10px 0 0}
+.status{margin-top:10px; font-size:14px; font-variant-numeric:tabular-nums}
+.status b{font-size:16px}
+.rowhead{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; font-weight:700}
+.lhead,.row{
+  display:grid;
+  grid-template-columns:minmax(0,1.3fr) minmax(0,1.1fr) 68px 68px 60px minmax(0,1fr) 84px 32px;
+  grid-template-areas:"part name m1 m2 avg spec judge del";
+  gap:6px; align-items:center;
+}
+.lhead{font-size:11px; color:var(--muted); padding:0 8px 4px}
+.row{padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); margin-bottom:6px}
+.row.invalid{border-color:var(--ng)}
+.row input,.row select,.row output{width:100%; box-sizing:border-box; padding:6px 7px; font-size:13px; min-width:0}
+.row input[type=number]{text-align:right; font-variant-numeric:tabular-nums}
+.c-part{grid-area:part} .c-name{grid-area:name} .c-m1{grid-area:m1} .c-m2{grid-area:m2}
+.c-avg{grid-area:avg; font-weight:700; text-align:right; font-variant-numeric:tabular-nums; padding:6px 7px; min-width:0}
+.c-spec{grid-area:spec}
+.jdg{grid-area:judge; justify-self:end; white-space:nowrap}
+.del{grid-area:del; width:30px; height:30px; padding:0; border:1px solid var(--line); background:var(--surface); color:var(--muted); border-radius:6px; font-size:16px; line-height:1}
+.badge{display:inline-block; padding:3px 9px; border-radius:999px; font-weight:700; font-size:12px; text-align:center}
+.badge.ok{background:var(--ok-soft); color:var(--ok)}
+.badge.ng{background:var(--ng-soft); color:var(--ng)}
+.badge.warn{background:var(--warn-soft); color:var(--warn)}
+.badge.muted{color:var(--muted); background:transparent; border:1px dashed var(--line)}
+.btn-s{background:none; border:1px solid var(--line); color:var(--muted); border-radius:8px; padding:6px 12px; font-size:12px}
+.btn-s.danger{border-color:var(--ng); color:var(--ng); font-weight:700}
+@media (max-width:560px){
+  .lhead{display:none}
+  .lhead,.row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 30px}
+  .row{grid-template-areas:"part name del" "m1 m2 avg" "spec judge judge"}
+  .jdg{justify-self:start}
+}
+
+.actions{display:flex; justify-content:flex-end; margin-top:6px}
+.err{color:var(--ng); font-size:13px; margin:10px 0 0; line-height:1.6}
+.banner{background:var(--warn-soft); color:var(--warn); border-radius:10px; padding:10px 14px; margin-top:12px; font-size:13px}
+.tw{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line); padding:8px 6px; text-align:left; white-space:nowrap}
+th{color:var(--muted); font-weight:700; font-size:12px}
+td.num, th.num{text-align:right}
+.filters{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.filters select, .filters input{flex:1 1 160px}
+.summary{margin:10px 0; font-size:14px}
+.toast{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:calc(16px + env(safe-area-inset-bottom, 0px));
+  background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:8px; font-size:13px;
+  max-width:90vw; z-index:20; box-sizing:border-box;
+}
+.sugg{position:fixed; z-index:30; background:var(--surface); border:1px solid var(--primary); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.18); max-height:240px; overflow-y:auto; padding:4px}
+.sg{display:flex; justify-content:space-between; gap:12px; padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; font-variant-numeric:tabular-nums}
+.sg span{color:var(--muted); white-space:nowrap}
+.sg.on,.sg:hover{background:var(--primary-soft)}
+[hidden]{display:none!important}
+.sync{margin-top:12px; border-radius:10px; padding:9px 12px; font-size:13px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; border:1px solid var(--line); background:var(--surface)}
+.sync.ok{background:var(--ok-soft); color:var(--ok); border-color:transparent}
+.sync.pending,.sync.offline,.sync.unset{background:var(--warn-soft); color:var(--warn); border-color:transparent}
+.sync.error{background:var(--ng-soft); color:var(--ng); border-color:transparent}
+body.viewonly .btn-s{display:none}
+.opline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+.opline select{min-width:160px}
+.act{grid-column:1 / -1; border-top:1px dashed var(--ng); padding-top:8px; display:flex; flex-direction:column; gap:8px}
+.acthead{display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; color:var(--ng); font-size:13px}
+.acthead b{font-weight:700}
+.dev{font-variant-numeric:tabular-nums; font-weight:700}
+.actboxes{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px}
+.actboxes label{display:flex; align-items:center; gap:6px; cursor:pointer}
+.actrow{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.6fr); gap:8px}
+.actrow input,.actrow textarea{width:100%; box-sizing:border-box; font:inherit; font-size:13px; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px}
+.actrow textarea{resize:vertical; min-height:44px}
+.wrapcell{white-space:normal; min-width:180px; max-width:340px}
+.wrapcell small{color:var(--muted)}
+@media (max-width:560px){ .actrow{grid-template-columns:minmax(0,1fr)} }
+@media (prefers-reduced-motion: no-preference){ .chip, .primary, .ghost{transition:background .15s, color .15s} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="ttl">硬度入力</div>
+      <div class="sub" id="sub">生産日ごとの硬度測定を入力します</div>
+    </div>
+    <div class="logo">シャインテック株式会社</div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+<div id="sync" class="sync unset" role="status"><span class="msg">同期先を確認しています</span><button type="button" class="ghost" id="syncBtn">今すぐ同期</button></div>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="entry" aria-selected="true">入力</button>
+    <button type="button" role="tab" data-tab="list" aria-selected="false">一覧・CSV書出し</button>
+  </nav>
+
+  <section id="sec-entry">
+    <div class="card">
+      <div class="lbl">生産日（ロット）</div>
+      <div id="chips" class="chips"></div>
+      <div class="adddate">
+        <input type="date" id="addDate" aria-label="追加する生産日">
+        <button type="button" class="ghost" id="addBtn">日付を追加</button>
+      </div>
+      <p class="hint" id="hint"></p>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="card">
+      <div class="rowhead">
+        <span>測定入力</span>
+        <button type="button" class="ghost" id="addRow">行を追加</button>
+      </div>
+      <div class="opline"><label for="operator"><b>入力者</b></label><select id="operator"><option value="">選択してください</option><option>夏目</option><option>佐藤</option><option>谷川</option><option>土橋</option></select><span class="hint">この PC で最後に選んだ名前を覚えます</span></div>
+      <div id="rows"></div>
+      <p class="hint">平均は①と②の平均で自動計算。判定は平均で行い、個別値が規格外なら「個別値注意」。規格は硬度規格に記載のない品番が FC250（HB174～241）、その他は各規格を自動選択（変更可）。</p>
+      <div class="actions"><button type="button" class="primary" id="save">この生産日を保存</button></div>
+      <p class="err" id="err" hidden></p>
+    </div>
+
+    <div class="card">
+      <div class="lbl">この生産日の登録済み</div>
+      <div class="tw" id="todayList"></div>
+    </div>
+  </section>
+
+  <section id="sec-list" hidden>
+    <div class="card">
+      <div class="filters">
+        <select id="lotSel" aria-label="生産日で絞り込み"></select>
+        <input type="search" id="q" placeholder="品番で検索" aria-label="品番で検索" autocomplete="off">
+        <button type="button" class="primary" id="csv">CSVを書き出す</button>
+      </div>
+      <div class="summary" id="lsum"></div>
+      <div class="tw" id="listTable"></div>
+    </div>
+  </section>
+</div>
+
+<datalist id="nameList"></datalist>
+<div id="toast" class="toast" role="status" hidden></div>
+<div id="sugg" class="sugg" role="listbox" hidden></div>
+
+<script src="config.js"></script>
+<script src="master.js"></script>
+<script>
+const MASTER = HARDNESS_MASTER.spec;          // 硬度規格シート由来: [{part, cust, spec}]
+const NAMES = HARDNESS_MASTER.names;            // 硬度2025/2026シート由来: 品番 -> 品名
+const OFFICIAL = HARDNESS_MASTER.official;     // 正式品番 -> 品名（品番コード一覧。現在は登録分のみ）
+const ALIAS = HARDNESS_MASTER.alias;           // 表記ゆれ（正規化後）-> 正式品番
+
+// 規格値（ヘッダー記載の FC250 / FC200 と、硬度規格シートの表記）
+const SPEC_RANGES = {
+  "FC200":[152,223], "FC250":[174,241],
+  "HB167～212":[167,212],
+  "HRB 80～100":[80,100], "HRB 85～100":[85,100], "HRB 90～101":[90,101], "HRB 90～103":[90,103]
+};
+const SPEC_OPTIONS = Object.keys(SPEC_RANGES);
+const DEFAULT_SPEC = "FC250";   // 硬度規格に記載のない品番
+const LOOKBACK_DAYS = 120;
+
+const state = {
+  recs: {}, syncState: "init", syncMsg: "", operator: "",
+  records: [], specByPart: {},
+  lots: [], curLot: 0,
+  rowsByLot: {},
+  tab: "entry", listLot: "all", listQ: "", armed: null, saving: false
+};
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const lotOf = d => (d.getFullYear() % 100) * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+const lotDate = l => new Date(2000 + Math.floor(l / 10000), Math.floor(l / 100) % 100 - 1, l % 100);
+const lotLabel = l => { const d = lotDate(l); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
+const lotIso = l => { const d = lotDate(l); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const isoToLot = s => { const [y, m, d] = s.split("-").map(Number); return lotOf(new Date(y, m - 1, d)); };
+const num = v => { if (v === "" || v == null) return null; const n = Number(String(v).replace(/,/g, "")); return Number.isFinite(n) ? n : null; };
+const round1 = v => v == null ? "" : (Math.round(v * 10) / 10);
+
+// 月曜は前週の金・土・日の3日分、それ以外は前日の生産分
+function defaultLots(now) {
+  const t = startOfDay(now);
+  return t.getDay() === 1 ? [-3, -2, -1].map(n => lotOf(addDays(t, n))) : [lotOf(addDays(t, -1))];
+}
+function hintFor(now) {
+  return startOfDay(now).getDay() === 1
+    ? "月曜日のため、前週の金・土・日の3日分を入力します。日付ごとに切り替えて保存してください。"
+    : "前日の生産分を入力します。";
+}
+
+// 品番の照合：全角・空白・大小文字を揃え、正式品番 or 表記ゆれから正式品番を返す（無ければ null）
+function normKey(s) { return String(s ?? "").normalize("NFKC").toUpperCase().replace(/[\s\u3000]+/g, "").trim(); }
+function canonPart(s) {
+  const n = normKey(s);
+  if (!n) return null;
+  if (Object.prototype.hasOwnProperty.call(OFFICIAL, n)) return n;
+  if (Object.prototype.hasOwnProperty.call(ALIAS, n)) return ALIAS[n];
+  return null;
+}
+function suggestFor(q) {
+  const k = normKey(q);
+  if (!k) return [];
+  const out = [];
+  const seen = new Set();
+  const push = p => { if (!seen.has(p) && out.length < 8) { seen.add(p); out.push({ part: p, name: OFFICIAL[p] || "" }); } };
+  // 鋳造型など硬度測定の対象外は候補に出さない（照合・保存は可能）
+  Object.keys(OFFICIAL).forEach(p => { if (!/鋳造型/.test(OFFICIAL[p] || "") && (p.includes(k) || p.replace(/^RD0/, "RD").includes(k))) push(p); });
+  Object.keys(ALIAS).forEach(a => { if (a.includes(k)) push(ALIAS[a]); });
+  return out;
+}
+
+function specFor(part) {
+  const m = MASTER.find(x => normKey(x.part) === normKey(part));
+  return m ? m.spec : DEFAULT_SPEC;
+}
+
+function evalRow(r) {
+  const m1 = num(r.m1), m2 = num(r.m2);
+  const avg = (m1 != null && m2 != null) ? (m1 + m2) / 2 : null;
+  const rg = SPEC_RANGES[r.spec];
+  let judge = "", cls = "";
+  let indiv = false;
+  if (avg == null) { judge = "未入力"; cls = "muted"; }
+  else if (!rg) { judge = "規格未選択"; cls = "warn"; }
+  else if (avg < rg[0] || avg > rg[1]) { judge = "NG"; cls = "ng"; }
+  else {
+    indiv = [m1, m2].some(v => v < rg[0] || v > rg[1]);
+    judge = indiv ? "個別値注意" : "OK";
+    cls = indiv ? "warn" : "ok";
+  }
+  return { m1, m2, avg, judge, cls, indiv };
+}
+
+function rows() {
+  const k = state.curLot;
+  if (!state.rowsByLot[k]) state.rowsByLot[k] = [];
+  return state.rowsByLot[k];
+}
+const newRow = () => ({ part: "", name: "", m1: "", m2: "", spec: "", nameManual: false, specManual: false,
+  acts: { n: false, accept: false, check: false, other: false }, extra: "", detail: "" });
+const ACT_LABELS = { n: "n増しして測定", accept: "規格からの外れ幅が小さいため許容", check: "成分・生産条件に異常がないか確認", other: "その他" };
+function actionLabels(r) { return Object.keys(ACT_LABELS).filter(k => r.acts[k]).map(k => ACT_LABELS[k]); }
+function devText(r, e) {
+  const rg = SPEC_RANGES[r.spec];
+  if (!rg || e.avg == null) return "";
+  if (e.avg > rg[1]) return `上限 ${rg[1]} を ＋${round1(e.avg - rg[1])} 超過`;
+  if (e.avg < rg[0]) return `下限 ${rg[0]} を −${round1(rg[0] - e.avg)} 下回る`;
+  return "";
+}
+
+function rowHtml(r, i) {
+  const opts = ['<option value="">—</option>'].concat(SPEC_OPTIONS.map(s =>
+    `<option value="${esc(s)}" ${s === r.spec ? "selected" : ""}>${esc(s)}</option>`
+  )).join("");
+  const n = i + 1;
+  return `<div class="row" data-i="${i}">
+    <input class="c-part" data-k="part" value="${esc(r.part)}" autocomplete="off" placeholder="品番" aria-label="${n}行目 品番">
+    <input class="c-name" data-k="name" list="nameList" value="${esc(r.name)}" autocomplete="off" placeholder="品名" aria-label="${n}行目 品名">
+    <input class="c-m1" data-k="m1" type="number" inputmode="decimal" step="0.1" value="${esc(r.m1)}" aria-label="${n}行目 測定値①">
+    <input class="c-m2" data-k="m2" type="number" inputmode="decimal" step="0.1" value="${esc(r.m2)}" aria-label="${n}行目 測定値②">
+    <output class="c-avg" data-out="avg">—</output>
+    <select class="c-spec" data-k="spec" aria-label="${n}行目 規格">${opts}</select>
+    <span class="badge muted jdg" data-out="judge">未入力</span>
+    <button type="button" class="del" data-del="${i}" aria-label="${n}行目を削除">×</button>
+  <div class="act" data-act="${i}" ${evalRow(r).judge === "NG" ? "" : "hidden"}>
+    <div class="acthead"><b>平均が規格外です。処置を記入してください</b><span class="dev" data-out="dev"></span></div>
+    <div class="actboxes">
+      <label><input type="checkbox" data-a="n" ${r.acts.n ? "checked" : ""}>${ACT_LABELS.n}</label>
+      <label><input type="checkbox" data-a="accept" ${r.acts.accept ? "checked" : ""}>${ACT_LABELS.accept}</label>
+      <label><input type="checkbox" data-a="check" ${r.acts.check ? "checked" : ""}>${ACT_LABELS.check}</label>
+      <label><input type="checkbox" data-a="other" ${r.acts.other ? "checked" : ""}>${ACT_LABELS.other}</label>
+    </div>
+    <div class="actrow">
+      <input data-k="extra" value="${esc(r.extra)}" placeholder="n増しの測定値（例：205, 208, 211）" aria-label="${n}行目 追加測定値">
+      <textarea data-k="detail" rows="2" placeholder="確認結果・判断の理由・処置内容" aria-label="${n}行目 処置内容">${esc(r.detail)}</textarea>
+    </div>
+  </div>
+  </div>`;
+}
+
+function renderRows() {
+  const list = rows();
+  if (!list.length) list.push(newRow());
+  const head = `<div class="lhead" aria-hidden="true"><span>品番</span><span>品名</span><span>測定値①</span><span>測定値②</span><span>平均</span><span>規格</span><span>判定</span><span></span></div>`;
+  $("#rows").innerHTML = head + list.map((r, i) => rowHtml(r, i)).join("");
+  list.forEach((_, i) => updateRowOut(i));
+}
+
+function updateRowOut(i) {
+  const el = document.querySelector(`.row[data-i="${i}"]`);
+  if (!el) return;
+  const r = rows()[i];
+  const e = evalRow(r);
+  el.querySelector('[data-out="avg"]').textContent = e.avg == null ? "—" : round1(e.avg);
+  const b = el.querySelector('[data-out="judge"]');
+  b.textContent = e.judge;
+  b.className = "badge " + (e.cls || "muted");
+  const dev = el.querySelector('[data-out="dev"]'); if (dev) dev.textContent = devText(r, e);
+  const act = el.querySelector(".act"); if (act) act.hidden = e.judge !== "NG";
+}
+
+function rebuildSpecMap() {
+  const best = {};
+  for (const r of state.records) {
+    if (!r.part || !r.spec) continue;
+    if (!best[r.part] || r.lot > best[r.part].lot) best[r.part] = { lot: r.lot, spec: r.spec };
+  }
+  state.specByPart = Object.fromEntries(Object.entries(best).map(([k, v]) => [k, v.spec]));
+}
+
+function renderDatalists() {
+  const parts = new Set([...MASTER.map(m => m.part), ...Object.keys(NAMES), ...state.records.map(r => r.part)]);
+  const names = new Set([...Object.values(NAMES), ...state.records.map(r => r.name)]);
+  $("#nameList").innerHTML = [...names].filter(Boolean).sort().map(n => `<option value="${esc(n)}">`).join("");
+}
+
+function renderChips() {
+  $("#chips").innerHTML = state.lots.map(l =>
+    `<button type="button" class="chip ${l === state.curLot ? "on" : ""}" data-lot="${l}" aria-pressed="${l === state.curLot}">${lotLabel(l)}</button>`
+  ).join("");
+  $("#hint").textContent = hintFor(new Date());
+}
+
+function renderStatus() {
+  const recs = state.records.filter(r => r.lot === state.curLot);
+  const ng = recs.filter(r => r.judge === "NG").length;
+  $("#status").innerHTML = `${lotLabel(state.curLot)} の登録済み <b>${recs.length}</b> 件　うちNG <b>${ng}</b> 件`;
+  $("#sub").textContent = `対象：${lotIso(state.curLot)}`;
+}
+
+function recTable(recs, withLot) {
+  if (!recs.length) return `<p class="hint">登録はまだありません。</p>`;
+  const head = `${withLot ? "<th>生産日</th>" : ""}<th>品番</th><th>品名</th><th class="num">①</th><th class="num">②</th><th class="num">平均</th><th>規格</th><th>判定</th><th>入力者</th><th>処置</th>${withLot ? "<th></th>" : ""}`;
+  const body = recs.map(r => {
+    const judge = `<span class="badge ${r.judge === "NG" ? "ng" : (r.indivWarn ? "warn" : "ok")}">${r.judge === "NG" ? "NG" : (r.indivWarn ? "OK（個別注意）" : "OK")}</span>`;
+    const act = r.judge === "NG"
+      ? `${esc(r.action || "（未記入）")}${r.deviation ? `<br><small>${esc(r.deviation)}</small>` : ""}${r.extra ? `<br><small>n増し：${esc(r.extra)}</small>` : ""}${r.actionDetail ? `<br><small>${esc(r.actionDetail)}</small>` : ""}`
+      : "";
+    return `<tr>${withLot ? `<td>${r.lot}</td>` : ""}<td>${esc(r.part)}</td><td>${esc(r.name)}</td>
+      <td class="num">${esc(r.m1)}</td><td class="num">${esc(r.m2)}</td><td class="num">${round1(r.avg)}</td>
+      <td>${esc(r.spec)}</td><td>${judge}</td><td>${esc(r.operator || "")}</td><td class="wrapcell">${act}</td>
+      ${withLot ? `<td><button type="button" class="btn-s ${state.armed === r.id ? "danger" : ""}" data-rid="${esc(r.id)}">${state.armed === r.id ? "もう一度で削除" : "削除"}</button></td>` : ""}</tr>`;
+  }).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderToday() {
+  const recs = state.records.filter(r => r.lot === state.curLot).sort((a, b) => (a.enteredAt || "") < (b.enteredAt || "") ? -1 : 1);
+  $("#todayList").innerHTML = recTable(recs, false);
+}
+
+function filteredRecords() {
+  const q = state.listQ.trim().toLowerCase();
+  return state.records
+    .filter(r => state.listLot === "all" || r.lot === Number(state.listLot))
+    .filter(r => !q || String(r.part).toLowerCase().includes(q))
+    .sort((a, b) => b.lot - a.lot || ((b.enteredAt || "") < (a.enteredAt || "") ? -1 : 1));
+}
+
+function renderList() {
+  const lots = [...new Set(state.records.map(r => r.lot))].sort((a, b) => b - a);
+  const sel = $("#lotSel");
+  sel.innerHTML = `<option value="all">すべて（直近${LOOKBACK_DAYS}日）</option>` +
+    lots.map(l => `<option value="${l}">${lotIso(l)}（${lotLabel(l)}）</option>`).join("");
+  sel.value = state.listLot;
+  const recs = filteredRecords();
+  const ng = recs.filter(r => r.judge === "NG").length;
+  $("#lsum").textContent = `該当 ${recs.length} 件 / NG ${ng} 件`;
+  $("#listTable").innerHTML = recTable(recs, true);
+}
+
+function renderAll() {
+  refreshRecords();
+  renderChips();
+  renderStatus();
+  renderToday();
+  renderDatalists();
+  if (state.tab === "list") renderList();
+}
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.hidden = true; }, 3500);
+}
+function showBanner(msg) { const b = $("#banner"); b.textContent = msg; b.hidden = false; }
+
+function setErr(list) {
+  const e = $("#err");
+  if (!list.length) { e.hidden = true; e.textContent = ""; return; }
+  e.hidden = false; e.innerHTML = list.map(esc).join("<br>");
+}
+
+// ---- events ----
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("button");
+  if (!t) return;
+  if (t.dataset.tab) { switchTab(t.dataset.tab); return; }
+  if (t.dataset.lot) {
+    state.curLot = Number(t.dataset.lot);
+    setErr([]);
+    renderRows(); renderAll(); return;
+  }
+  if (t.dataset.del != null) {
+    rows().splice(Number(t.dataset.del), 1);
+    renderRows(); return;
+  }
+  if (t.dataset.rid) { await deleteRecord(t.dataset.rid, t); return; }
+});
+
+$("#addBtn").addEventListener("click", () => {
+  const v = $("#addDate").value;
+  if (!v) { toast("追加する日付を選んでください"); return; }
+  const l = isoToLot(v);
+  if (!state.lots.includes(l)) state.lots.push(l);
+  state.lots.sort((a, b) => a - b);
+  state.curLot = l;
+  renderRows(); renderAll();
+});
+
+$("#addRow").addEventListener("click", () => {
+  rows().push(newRow());
+  renderRows();
+  const inputs = document.querySelectorAll(".row [data-k='part']");
+  inputs[inputs.length - 1]?.focus();
+});
+
+$("#rows").addEventListener("input", ev => {
+  const el = ev.target;
+  const k = el.dataset.k;
+  if (!k) return;
+  const i = Number(el.closest(".row").dataset.i);
+  const r = rows()[i];
+  if (k === "part") {
+    r.part = el.value.trim();
+    showSugg(el);
+    const c = canonPart(r.part);
+    if (c) applyCanon(el, r, c);
+    el.closest(".row").classList.remove("invalid");
+  } else if (k === "name") {
+    r.name = el.value; r.nameManual = el.value !== "";
+  } else if (k === "m1" || k === "m2") {
+    r[k] = el.value;
+  } else if (k === "extra" || k === "detail") {
+    r[k] = el.value;
+  }
+  updateRowOut(i);
+});
+
+$("#rows").addEventListener("change", ev => {
+  const el = ev.target;
+  const i = Number(el.closest(".row").dataset.i);
+  const r = rows()[i];
+  if (el.dataset.a) { r.acts[el.dataset.a] = el.checked; return; }
+  if (el.dataset.k === "part") {
+    const c = canonPart(el.value);
+    r.part = c || el.value.trim();
+    if (c) { el.value = c; applyCanon(el, r, c); }
+    el.closest(".row").classList.toggle("invalid", !c && r.part !== "");
+    return;
+  }
+  if (el.dataset.k !== "spec") return;
+  r.spec = el.value; r.specManual = el.value !== "";
+  updateRowOut(i);
+});
+
+function switchTab(name) {
+  state.tab = name;
+  document.querySelectorAll(".tabs [data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  $("#sec-entry").hidden = name !== "entry";
+  $("#sec-list").hidden = name !== "list";
+  if (name === "list") renderList();
+}
+
+$("#lotSel").addEventListener("change", e => { state.listLot = e.target.value; renderList(); });
+$("#q").addEventListener("input", e => { state.listQ = e.target.value; renderList(); });
+
+$("#save").addEventListener("click", saveLot);
+
+function applyCanon(el, r, c) {
+  r.part = c;
+  const row = el.closest(".row");
+  if (!r.nameManual) { r.name = OFFICIAL[c] || ""; row.querySelector('[data-k="name"]').value = r.name; }
+  if (!r.specManual) { r.spec = specFor(c); row.querySelector('[data-k="spec"]').value = r.spec; }
+  updateRowOut(Number(row.dataset.i));
+}
+
+let suggInput = null;
+function showSugg(input) {
+  const list = suggestFor(input.value);
+  const box = $("#sugg");
+  if (!list.length) { hideSugg(); return; }
+  suggInput = input;
+  const rect = input.getBoundingClientRect();
+  box.style.left = Math.max(8, rect.left) + "px";
+  box.style.top = (rect.bottom + 4) + "px";
+  box.style.width = Math.min(Math.max(rect.width, 260), window.innerWidth - 16) + "px";
+  box.innerHTML = list.map((o, i) =>
+    `<div class="sg${i === 0 ? " on" : ""}" role="option" data-v="${esc(o.part)}"><b>${esc(o.part)}</b><span>${esc(o.name)}</span></div>`).join("");
+  box.hidden = false;
+}
+function hideSugg() { $("#sugg").hidden = true; suggInput = null; }
+document.addEventListener("mousedown", ev => {
+  const it = ev.target.closest(".sg");
+  if (!it || !suggInput) return;
+  ev.preventDefault();
+  const input = suggInput;
+  input.value = it.dataset.v;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  hideSugg();
+});
+document.addEventListener("focusout", ev => {
+  if (ev.target.dataset && ev.target.dataset.k === "part") setTimeout(hideSugg, 150);
+});
+document.addEventListener("keydown", ev => {
+  if (!suggInput || $("#sugg").hidden) return;
+  if (ev.key === "Enter") {
+    const first = $("#sugg .sg");
+    if (first) { ev.preventDefault(); first.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })); }
+  } else if (ev.key === "Escape") hideSugg();
+});
+
+async function saveLot() {
+  if (state.saving) return;
+  if (VIEW_ONLY) { toast("閲覧用では保存できません"); return; }
+  const list = rows();
+  const op = $("#operator").value;
+  const errs = [];
+  const valid = [];
+  if (!op) errs.push("入力者を選択してください（測定入力の上）");
+  list.forEach((r, i) => {
+    const e = evalRow(r);
+    const row = document.querySelector(`.row[data-i="${i}"]`);
+    row?.classList.remove("invalid");
+    const c = canonPart(r.part);
+    const hasAct = actionLabels(r).length > 0 || (r.detail || "").trim() !== "";
+    const needAct = e.judge === "NG" && !hasAct;
+    if (!r.part) errs.push(`${i + 1}行目：品番を入力してください`);
+    else if (!c) errs.push(`${i + 1}行目：「${r.part}」は正式品番に照合できません（品番コード一覧にありません）`);
+    else if (e.avg == null) errs.push(`${i + 1}行目：測定値①と②を入力してください`);
+    else if (!r.spec) errs.push(`${i + 1}行目：規格を選択してください`);
+    else if (needAct) errs.push(`${i + 1}行目：平均が規格外です。処置（n増し・許容・確認など）を記入してください`);
+    else valid.push({ r, e, part: c });
+    if (!c || e.avg == null || !r.spec || needAct) row?.classList.add("invalid");
+  });
+  if (errs.length) { setErr(errs); return; }
+  if (!valid.length) { toast("保存する行がありません"); return; }
+  setErr([]);
+
+  state.operator = op; safeSet(OP_KEY, op);
+  const saved = new Set();
+  for (const { r, e, part } of valid) {
+    const ng = e.judge === "NG";
+    addRecord({
+      lot: state.curLot, part, name: OFFICIAL[part] || r.name || "",
+      m1: e.m1, m2: e.m2, avg: e.avg, spec: r.spec,
+      judge: ng ? "NG" : "OK", indivWarn: !!e.indiv,
+      operator: op,
+      action: ng ? actionLabels(r).join("；") : "",
+      actionDetail: ng ? (r.detail || "").trim() : "",
+      extra: ng ? (r.extra || "").trim() : "",
+      deviation: ng ? devText(r, e) : "",
+      enteredAt: new Date().toISOString()
+    });
+    saved.add(r);
+  }
+  state.rowsByLot[state.curLot] = list.filter(r => !saved.has(r));
+  renderRows();
+  toast(`${valid.length} 件を保存しました`);
+}
+
+async function deleteRecord(id, btn) {
+  if (VIEW_ONLY) return;
+  if (state.armed !== id) { state.armed = id; renderList(); return; }
+  state.armed = null;
+  removeRecord(id);
+  toast("削除しました");
+}
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+$("#csv").addEventListener("click", () => {
+  const recs = filteredRecords().slice().sort((a, b) => a.lot - b.lot);
+  if (!recs.length) { toast("書き出す記録がありません"); return; }
+  const head = ["ロット", "品番", "品名", "測定値1", "測定値2", "平均", "規格", "判定", "入力者", "処置", "処置内容", "n増し測定値", "外れ幅"];
+  const lines = [head.join(",")].concat(recs.map(r =>
+    [r.lot, r.part, r.name, r.m1, r.m2, round1(r.avg), r.spec, r.judge, r.operator, r.action, r.actionDetail, r.extra, r.deviation].map(csvCell).join(",")
+  ));
+  const label = state.listLot === "all" ? `直近${LOOKBACK_DAYS}日` : state.listLot;
+  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `硬度_${label}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+});
+
+// ---- startup ----
+// ---- 端末保存 → スプレッドシートへ同期 ----
+const LOCAL_KEY = "hardness-nippo-records-v1";
+const DEVICE_KEY = "hardness-nippo-device-v1";
+const OP_KEY = "hardness-nippo-operator-v1";
+const CFG = window.APP_CONFIG || {};
+const VIEW_ONLY = /[?&]view(?=&|=|$)/.test(location.search);
+let syncing = false, again = false;
+
+function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function deviceId() {
+  let d = safeGet(DEVICE_KEY);
+  if (!d) { d = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); safeSet(DEVICE_KEY, d); }
+  return d;
+}
+function genId() { return "r" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function loadLocal() { try { return JSON.parse(safeGet(LOCAL_KEY) || "{}"); } catch (e) { return {}; } }
+function persist() {
+  if (!safeSet(LOCAL_KEY, JSON.stringify(state.recs))) toast("この PC に保存できません（保存容量・設定を確認してください）");
+}
+function refreshRecords() {
+  state.records = Object.values(state.recs).filter(r => !r.deleted);
+  rebuildSpecMap();
+}
+function addRecord(data) {
+  const id = genId();
+  state.recs[id] = { ...data, id, device: deviceId(), synced: false, deleted: false };
+  persist(); renderAll(); syncNow();
+}
+function removeRecord(id) {
+  const r = state.recs[id]; if (!r) return;
+  r.deleted = true; r.synced = false;
+  persist(); renderAll(); syncNow();
+}
+function pendingCount() { return Object.values(state.recs).filter(r => !r.synced).length; }
+function setSync(kind, text) {
+  $("#sync").className = "sync " + kind;
+  $("#sync .msg").textContent = text;
+}
+function toRow(r) {
+  return { id: r.id, lot: r.lot, part: r.part, name: r.name || "", m1: r.m1, m2: r.m2, avg: r.avg,
+           spec: r.spec, judge: r.judge, indivWarn: !!r.indivWarn, enteredAt: r.enteredAt || "",
+           device: r.device || "", deleted: !!r.deleted,
+           operator: r.operator || "", action: r.action || "", actionDetail: r.actionDetail || "",
+           extra: r.extra || "", deviation: r.deviation || "" };
+}
+async function pushPending() {
+  const pending = Object.values(state.recs).filter(r => !r.synced);
+  if (!pending.length) return;
+  const res = await fetch(CFG.syncUrl, {
+    method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({ token: CFG.token, action: "upsert", rows: pending.map(toRow) })
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || "サーバーエラー");
+  pending.forEach(r => { if (state.recs[r.id]) state.recs[r.id].synced = true; });
+  persist();
+}
+async function pullRows() {
+  const from = lotOf(addDays(startOfDay(new Date()), -LOOKBACK_DAYS));
+  const url = `${CFG.syncUrl}?action=list&from=${from}&token=${encodeURIComponent(CFG.token)}`;
+  const res = await fetch(url, { cache: "no-store" });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || "サーバーエラー");
+  j.rows.forEach(row => {
+    const cur = state.recs[row.id];
+    if (cur && !cur.synced) return;       // 未送信の端末内データを優先
+    state.recs[row.id] = { ...row, synced: true };
+  });
+  persist();
+}
+async function syncNow() {
+  if (!CFG.syncUrl) { setSync("unset", "同期先が未設定です（設定手順の手順2・3を行ってください）"); return; }
+  if (syncing) { again = true; return; }
+  syncing = true;
+  try {
+    if (!navigator.onLine) { setSync("offline", `オフライン：未送信 ${pendingCount()} 件を端末に保存中`); return; }
+    await pushPending();
+    await pullRows();
+    const left = pendingCount();
+    setSync(left ? "pending" : "ok", left ? `未送信 ${left} 件（つながると自動で送信）` : "同期済み ✓");
+    renderAll();
+  } catch (e) {
+    setSync("error", `同期できませんでした（${e.message || e}）。つながると自動で再送します`);
+  } finally {
+    syncing = false;
+    if (again) { again = false; setTimeout(syncNow, 0); }
+  }
+}
+async function connect() {
+  state.recs = loadLocal();
+  if (VIEW_ONLY) {
+    switchTab("list");
+    document.querySelector('[data-tab="entry"]').hidden = true;
+    document.body.classList.add("viewonly");
+  }
+  refreshRecords();
+  renderAll();
+  $("#syncBtn").addEventListener("click", () => syncNow());
+  window.addEventListener("online", () => syncNow());
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) syncNow(); });
+  setInterval(syncNow, 60000);
+  syncNow();
+}
+
+const now = new Date();
+state.lots = defaultLots(now);
+state.curLot = state.lots[0];
+state.operator = safeGet(OP_KEY) || "";
+$("#operator").value = state.operator;
+renderRows();
+renderAll();
+connect();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+
+</body>
+</html>
