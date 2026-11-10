@@ -629,9 +629,9 @@ $("#rows").addEventListener("change", ev => {
   if (el.dataset.a) { r.acts[el.dataset.a] = el.checked; return; }
   if (el.dataset.k === "part") {
     const c = canonPart(el.value);
-    r.part = c || el.value.trim();
-    if (c) { el.value = c; applyCanon(el, r, c); }
-    el.closest(".row").classList.toggle("invalid", !c && r.part !== "");
+    if (c) { r.part = c; el.value = c; applyCanon(el, r, c); }
+    else { r.part = el.value.trim(); if (r.part) unlistedRow(el, r); }
+    el.closest(".row").classList.remove("invalid");
     return;
   }
   if (el.dataset.k !== "spec") return;
@@ -660,6 +660,21 @@ $("#pShow").addEventListener("click", () => {
 $("#q").addEventListener("input", e => { state.listQ = e.target.value; renderList(); });
 
 $("#save").addEventListener("click", saveLot);
+
+// マスターにない品番（新規・試作など）：そのまま入力できる。規格は未選択なら FC250、品名の後ろに「（マスター外）」を付けて保存
+function unlistedKey(s) { return normKey(s); }
+function unlistedRow(el, r) {
+  r.part = unlistedKey(r.part);
+  el.value = r.part;
+  const row = el.closest(".row");
+  if (!r.specManual) { r.spec = DEFAULT_SPEC; row.querySelector('[data-k="spec"]').value = r.spec; }
+  el.title = "マスター外の品番です（規格未選択なら FC250 で判定して保存します）";
+  updateRowOut(Number(row.dataset.i));
+}
+function unlistedName(r) {
+  const n = (r.name || "").trim();
+  return n ? `${n}（マスター外）` : "（マスター外）";
+}
 
 function applyCanon(el, r, c) {
   r.part = c;
@@ -717,16 +732,16 @@ async function saveLot() {
     const e = evalRow(r);
     const row = document.querySelector(`.row[data-i="${i}"]`);
     row?.classList.remove("invalid");
-    const c = canonPart(r.part);
+    const official = canonPart(r.part);
+    const part = official || unlistedKey(r.part);
     const hasAct = actionLabels(r).length > 0 || (r.detail || "").trim() !== "";
     const needAct = e.judge === "NG" && !hasAct;
     if (!r.part) errs.push(`${i + 1}行目：品番を入力してください`);
-    else if (!c) errs.push(`${i + 1}行目：「${r.part}」は正式品番に照合できません（品番コード一覧にありません）`);
     else if (e.avg == null) errs.push(`${i + 1}行目：測定値①と②を入力してください`);
     else if (!r.spec) errs.push(`${i + 1}行目：規格を選択してください`);
     else if (needAct) errs.push(`${i + 1}行目：平均が規格外です。処置（n増し・許容・確認など）を記入してください`);
-    else valid.push({ r, e, part: c });
-    if (!c || e.avg == null || !r.spec || needAct) row?.classList.add("invalid");
+    else valid.push({ r, e, part, unlisted: !official });
+    if (!r.part || e.avg == null || !r.spec || needAct) row?.classList.add("invalid");
   });
   if (errs.length) { setErr(errs); return; }
   if (!valid.length) { toast("保存する行がありません"); return; }
@@ -734,10 +749,10 @@ async function saveLot() {
 
   state.operator = op; safeSet(OP_KEY, op);
   const saved = new Set();
-  for (const { r, e, part } of valid) {
+  for (const { r, e, part, unlisted } of valid) {
     const ng = e.judge === "NG";
     addRecord({
-      lot: state.curLot, part, name: OFFICIAL[part] || r.name || "",
+      lot: state.curLot, part, name: OFFICIAL[part] || (unlisted ? unlistedName(r) : (r.name || "")),
       m1: e.m1, m2: e.m2, avg: e.avg, spec: r.spec,
       judge: ng ? "NG" : "OK", indivWarn: !!e.indiv,
       operator: op,
@@ -751,7 +766,8 @@ async function saveLot() {
   }
   state.rowsByLot[state.curLot] = list.filter(r => !saved.has(r));
   renderRows();
-  toast(`${valid.length} 件を保存しました`);
+  const nU = valid.filter(v => v.unlisted).length;
+  toast(`${valid.length} 件を保存しました` + (nU ? `（うちマスター外 ${nU} 件）` : ""));
 }
 
 async function deleteRecord(id, btn) {
