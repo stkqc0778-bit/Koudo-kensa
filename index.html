@@ -133,18 +133,16 @@ td.num, th.num{text-align:right}
 body.viewonly .btn-s{display:none}
 .opline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
 .opline select{min-width:160px}
-.act{grid-column:1 / -1; border-top:1px dashed var(--ng); padding-top:8px; display:flex; flex-direction:column; gap:8px}
-.acthead{display:flex; gap:10px; flex-wrap:wrap; align-items:baseline; color:var(--ng); font-size:13px}
-.acthead b{font-weight:700}
-.dev{font-variant-numeric:tabular-nums; font-weight:700}
-.actboxes{display:flex; flex-wrap:wrap; gap:6px 14px; font-size:13px}
-.actboxes label{display:flex; align-items:center; gap:6px; cursor:pointer}
-.actrow{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.6fr); gap:8px}
-.actrow input,.actrow textarea{width:100%; box-sizing:border-box; font:inherit; font-size:13px; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px}
-.actrow textarea{resize:vertical; min-height:44px}
+.rm{grid-column:1 / -1; display:flex; align-items:center; gap:8px; font-size:13px; border-top:1px dashed var(--ng); padding-top:8px}
+.rm label{display:flex; align-items:center; gap:8px; width:100%}
+.rm input{flex:1; min-width:0; font:inherit; font-size:13px; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px}
+.req{grid-column:1 / -1; display:flex; flex-direction:column; gap:8px}
+.reqitem{border:1px solid var(--ng); border-radius:10px; padding:8px 10px; background:var(--ng-soft)}
+.reqitem.ok{border-color:var(--ok); background:var(--ok-soft); font-size:13px; padding:6px 10px}
+.reqhead{display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--ng); margin-bottom:6px}
+.reqitem textarea{width:100%; box-sizing:border-box; font:inherit; font-size:12.5px; line-height:1.5; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px; resize:vertical}
 .wrapcell{white-space:normal; min-width:180px; max-width:340px}
 .wrapcell small{color:var(--muted)}
-@media (max-width:560px){ .actrow{grid-template-columns:minmax(0,1fr)} }
 .pchip[aria-pressed="true"]{background:var(--primary); color:var(--primary-fg); font-weight:700}
 .gate{position:fixed; inset:0; background:rgba(13,19,34,.55); display:flex; align-items:center; justify-content:center; z-index:40; padding:16px; box-sizing:border-box}
 .gate[hidden]{display:none!important}
@@ -152,6 +150,9 @@ body.viewonly .btn-s{display:none}
 .gatebox input{width:100%; margin-top:12px}
 .gatebox .primary{width:100%; margin-top:10px}
 .alertng{background:var(--ng-soft); color:var(--ng); font-weight:700; border:1px solid var(--ng)}
+.warnY{background:#fff4cc; color:#5c4300; font-weight:700; border:1px solid #d9a400}
+.row.warnrow{border-color:#d9a400}
+#inputWarn ul{margin:6px 0 0; padding-left:20px; font-weight:400}
 .pbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px}
 .pbar input{flex:0 1 160px}
 @media (prefers-reduced-motion: no-preference){ .chip, .primary, .ghost{transition:background .15s, color .15s} }
@@ -176,6 +177,7 @@ body.viewonly .btn-s{display:none}
 
   <section id="sec-entry">
     <div id="planAlert" class="banner alertng" role="alert" hidden></div>
+    <div id="inputWarn" class="banner warnY" role="status" hidden></div>
     <div class="card">
       <div class="lbl">生産日（ロット）</div>
       <div id="chips" class="chips"></div>
@@ -200,7 +202,7 @@ body.viewonly .btn-s{display:none}
       </div>
       <div class="opline"><label for="operator"><b>入力者</b></label><select id="operator"><option value="">選択してください</option><option>夏目</option><option>佐藤</option><option>谷川</option><option>土橋</option></select><span class="hint">この PC で最後に選んだ名前を覚えます</span></div>
       <div id="rows"></div>
-      <p class="hint">平均は①と②の平均で自動計算。判定は平均で行い、個別値が規格外なら「個別値注意」。規格は硬度規格に記載のない品番が FC250（HB174～241）、その他は各規格を自動選択（変更可）。</p>
+      <p class="hint">平均は①と②の平均で自動計算。判定は平均で行い、個別値が規格外なら「個別値注意」。FC250は個別値が170未満・250超、①②の差が35以上で依頼文を出します（依頼文は保存前にコピーできます）。規格は硬度規格に記載のない品番が FC250（HB174～241）、その他は各規格を自動選択（変更可）。</p>
       <div class="actions"><button type="button" class="primary" id="save">この生産日を保存</button></div>
       <p class="err" id="err" hidden></p>
     </div>
@@ -264,6 +266,18 @@ const SPEC_RANGES = {
 };
 const SPEC_OPTIONS = Object.keys(SPEC_RANGES);
 const DEFAULT_SPEC = "FC250";   // 硬度規格に記載のない品番
+
+// ---- 依頼文の判定（個別値・①②の差）----
+// FC250：個別値が 170 未満 または 250 超 → n増し再測定の依頼
+const REMEASURE_FC250 = [170, 250];
+// FCC：規格値 [下限, 上限] を入れると有効（下限−1.0 未満／上限+1.0 超 → 依頼）。未設定の間は FCC の依頼文は出ません
+const FCC_RANGE = null;
+const FCC_TOL = 1.0;
+function remeasureRange(spec) {
+  if (spec === "FC250") return REMEASURE_FC250;
+  if (spec === "FCC" && FCC_RANGE) return [FCC_RANGE[0] - FCC_TOL, FCC_RANGE[1] + FCC_TOL];
+  return null;
+}
 
 const state = {
   recs: {}, syncState: "init", syncMsg: "", operator: "",
@@ -345,16 +359,62 @@ function rows() {
   if (!state.rowsByLot[k]) state.rowsByLot[k] = [];
   return state.rowsByLot[k];
 }
-const newRow = () => ({ part: "", name: "", m1: "", m2: "", spec: "", nameManual: false, specManual: false,
-  acts: { n: false, accept: false, check: false, other: false }, extra: "", detail: "" });
-const ACT_LABELS = { n: "n増しして測定", accept: "規格からの外れ幅が小さいため許容", check: "成分・生産条件に異常がないか確認", other: "その他" };
-function actionLabels(r) { return Object.keys(ACT_LABELS).filter(k => r.acts[k]).map(k => ACT_LABELS[k]); }
-function devText(r, e) {
-  const rg = SPEC_RANGES[r.spec];
-  if (!rg || e.avg == null) return "";
-  if (e.avg > rg[1]) return `上限 ${rg[1]} を ＋${round1(e.avg - rg[1])} 超過`;
-  if (e.avg < rg[0]) return `下限 ${rg[0]} を −${round1(rg[0] - e.avg)} 下回る`;
-  return "";
+const newRow = () => ({ part: "", name: "", m1: "", m2: "", spec: "", nameManual: false, specManual: false, extra: "" });
+
+// 再測定値・見直し後の値（カンマ・空白区切り）を読む
+function parseRe(s) {
+  const vals = [], bad = [];
+  String(s || "").split(/[\s,、，;；]+/).filter(Boolean).forEach(t => {
+    const n = Number(t);
+    if (Number.isFinite(n)) vals.push(n); else bad.push(t);
+  });
+  return { vals, bad };
+}
+
+const REQ_LABEL = { remeasure: "n増し再測定依頼", escalate: "異常展開依頼", review: "測定見直し依頼", ok: "再測定：規格内" };
+const outOf = (v, rg) => v < rg[0] || v > rg[1];
+function reqHead(r, e) {
+  const f = v => v == null ? "—" : v;
+  return [
+    `生産日：${lotIso(state.curLot)}`,
+    `品番：${canonPart(r.part) || r.part}${r.name ? `（${r.name}）` : ""}`,
+    `規格：${r.spec}`,
+    `測定値：①${f(e.m1)}　②${f(e.m2)}（平均 ${round1(e.avg)}）`
+  ].join("\n");
+}
+
+// 入力行から、出すべき依頼文の一覧を作る（type: remeasure / escalate / review / ok）
+function computeReq(r, e) {
+  const items = [];
+  const rg = remeasureRange(r.spec);
+  const re = parseRe(r.extra).vals;
+  const origOut = rg ? [["測定値①", e.m1], ["測定値②", e.m2]].filter(([, v]) => v != null && outOf(v, rg)) : [];
+  const reOut = rg ? re.filter(v => outOf(v, rg)) : [];
+  const head = reqHead(r, e);
+  const range = rg ? `判定範囲 ${rg[0]}～${rg[1]}` : "";
+  if (rg && re.length && reOut.length) {
+    items.push({ type: "escalate", label: REQ_LABEL.escalate, dev: `再測定 規格外 ${reOut.join("、")}`,
+      text: `【硬度 異常の展開依頼】\n${head}\n再測定値：${re.join("、")}\n再測定でも規格外の値があります：${reOut.join("、")}（${range}）\nご依頼：関係者へ異常を展開し、原因の調査と処置のご検討をお願いします。` });
+  } else if (rg && re.length) {
+    items.push({ type: "ok", label: REQ_LABEL.ok, dev: `再測定 ${re.join("、")}（${range}の範囲内）`, text: "" });
+  } else if (origOut.length) {
+    items.push({ type: "remeasure", label: REQ_LABEL.remeasure, dev: `規格外 ${origOut.map(([l, v]) => `${l}${v}`).join("、")}`,
+      text: `【硬度 n増し再測定の依頼】\n${head}\n規格外の個別値：${origOut.map(([l, v]) => `${l} ${v}`).join("、")}（${range}）\nご依頼：同一ロットから n増し（追加測定）を行い、結果を入力画面の「再測定値」欄へ入力してください。` });
+  }
+  if (e.m1 != null && e.m2 != null && Math.abs(e.m1 - e.m2) >= DIFF_LIMIT) {
+    const d = round1(Math.abs(e.m1 - e.m2));
+    items.push({ type: "review", label: REQ_LABEL.review, dev: `①と②の差 ${d}`,
+      text: `【硬度 測定の見直しの依頼】\n${head}\n測定値①と②の差：${d}（${DIFF_LIMIT}以上）\nご依頼：測定の見直し（再測定・測定方法・試料の確認）をお願いします。` });
+  }
+  return items;
+}
+
+// 依頼文の表示（コピーできる文面。ok は一行の案内のみ）
+function reqBoxes(items, i) {
+  return items.map(x => x.type === "ok"
+    ? `<div class="reqitem ok"><b>${esc(x.label)}</b>　${esc(x.dev)}</div>`
+    : `<div class="reqitem"><div class="reqhead"><b>${esc(x.label)}</b><button type="button" class="btn-s" data-copy="${i}">依頼文をコピー</button></div><textarea readonly rows="${x.text.split("\n").length}" aria-label="${esc(x.label)}の文面">${esc(x.text)}</textarea></div>`
+  ).join("");
 }
 
 function rowHtml(r, i) {
@@ -371,19 +431,8 @@ function rowHtml(r, i) {
     <select class="c-spec" data-k="spec" aria-label="${n}行目 規格">${opts}</select>
     <span class="badge muted jdg" data-out="judge">未入力</span>
     <button type="button" class="del" data-del="${i}" aria-label="${n}行目を削除">×</button>
-  <div class="act" data-act="${i}" ${evalRow(r).judge === "NG" ? "" : "hidden"}>
-    <div class="acthead"><b>平均が規格外です。処置を記入してください</b><span class="dev" data-out="dev"></span></div>
-    <div class="actboxes">
-      <label><input type="checkbox" data-a="n" ${r.acts.n ? "checked" : ""}>${ACT_LABELS.n}</label>
-      <label><input type="checkbox" data-a="accept" ${r.acts.accept ? "checked" : ""}>${ACT_LABELS.accept}</label>
-      <label><input type="checkbox" data-a="check" ${r.acts.check ? "checked" : ""}>${ACT_LABELS.check}</label>
-      <label><input type="checkbox" data-a="other" ${r.acts.other ? "checked" : ""}>${ACT_LABELS.other}</label>
-    </div>
-    <div class="actrow">
-      <input data-k="extra" value="${esc(r.extra)}" placeholder="n増しの測定値（例：205, 208, 211）" aria-label="${n}行目 追加測定値">
-      <textarea data-k="detail" rows="2" placeholder="確認結果・判断の理由・処置内容" aria-label="${n}行目 処置内容">${esc(r.detail)}</textarea>
-    </div>
-  </div>
+    <div class="rm" data-rm="${i}" hidden><label>再測定値（カンマ区切り）<input data-k="extra" inputmode="decimal" value="${esc(r.extra)}" placeholder="例：205, 208, 211" aria-label="${n}行目 再測定値"></label></div>
+    <div class="req" data-req="${i}"></div>
   </div>`;
 }
 
@@ -396,6 +445,32 @@ function renderRows() {
   list.forEach((_, i) => updateRowOut(i));
 }
 
+// 測定値の確認：整数部が3桁以外、または測定値①②の差が35以上
+const DIFF_LIMIT = 35;
+function digitsOf(n) { return String(Math.trunc(Math.abs(n))).length; }
+function rowWarn(r) {
+  const out = [];
+  const m1 = num(r.m1), m2 = num(r.m2);
+  [["測定値①", m1, r.m1], ["測定値②", m2, r.m2]].forEach(([lab, n, raw]) => {
+    if (n != null && digitsOf(n) !== 3) out.push({ kind: "digit", msg: `${lab}「${raw}」は${digitsOf(n)}桁です。入力内容が合っているか確認してください` });
+  });
+  if (m1 != null && m2 != null && Math.abs(m1 - m2) >= DIFF_LIMIT) {
+    out.push({ kind: "diff", msg: `測定値①と②の差が ${round1(Math.abs(m1 - m2))} あります（${DIFF_LIMIT}以上）。測定の見直しを依頼してください` });
+  }
+  return out;
+}
+function updateInputWarn() {
+  const box = $("#inputWarn");
+  const lines = [];
+  rows().forEach((r, i) => {
+    rowWarn(r).forEach(w => lines.push(`${i + 1}行目${r.part ? "（" + r.part + "）" : ""}：${w.msg}`));
+    const el = document.querySelector(`.row[data-i="${i}"]`);
+    if (el) el.classList.toggle("warnrow", rowWarn(r).length > 0);
+  });
+  box.hidden = lines.length === 0;
+  box.innerHTML = lines.length ? `入力の確認（保存前に見直してください）<ul>${lines.map(esc).join("")}</ul>` : "";
+}
+
 function updateRowOut(i) {
   const el = document.querySelector(`.row[data-i="${i}"]`);
   if (!el) return;
@@ -405,8 +480,12 @@ function updateRowOut(i) {
   const b = el.querySelector('[data-out="judge"]');
   b.textContent = e.judge;
   b.className = "badge " + (e.cls || "muted");
-  const dev = el.querySelector('[data-out="dev"]'); if (dev) dev.textContent = devText(r, e);
-  const act = el.querySelector(".act"); if (act) act.hidden = e.judge !== "NG";
+  const items = e.judge === "未入力" ? [] : computeReq(r, e);
+  const need = items.some(x => x.type !== "ok");
+  const rm = el.querySelector('[data-rm]');
+  if (rm) rm.hidden = !(need || (r.extra || "").trim() !== "");
+  el.querySelector('[data-req]').innerHTML = reqBoxes(items, i);
+  updateInputWarn();
 }
 
 function rebuildSpecMap() {
@@ -440,11 +519,11 @@ function renderStatus() {
 
 function recTable(recs, withLot) {
   if (!recs.length) return `<p class="hint">登録はまだありません。</p>`;
-  const head = `${withLot ? "<th>生産日</th>" : ""}<th>品番</th><th>品名</th><th class="num">①</th><th class="num">②</th><th class="num">平均</th><th>規格</th><th>判定</th><th>入力者</th><th>処置</th>${withLot ? "<th></th>" : ""}`;
+  const head = `${withLot ? "<th>生産日</th>" : ""}<th>品番</th><th>品名</th><th class="num">①</th><th class="num">②</th><th class="num">平均</th><th>規格</th><th>判定</th><th>入力者</th><th>依頼・処置</th>${withLot ? "<th></th>" : ""}`;
   const body = recs.map(r => {
     const judge = `<span class="badge ${r.judge === "NG" ? "ng" : (r.indivWarn ? "warn" : "ok")}">${r.judge === "NG" ? "NG" : (r.indivWarn ? "OK（個別注意）" : "OK")}</span>`;
-    const act = r.judge === "NG"
-      ? `${esc(r.action || "（未記入）")}${r.deviation ? `<br><small>${esc(r.deviation)}</small>` : ""}${r.extra ? `<br><small>n増し：${esc(r.extra)}</small>` : ""}${r.actionDetail ? `<br><small>${esc(r.actionDetail)}</small>` : ""}`
+    const act = r.action
+      ? `${esc(r.action)}${r.deviation ? `<br><small>${esc(r.deviation)}</small>` : ""}${r.extra ? `<br><small>再測定：${esc(r.extra)}</small>` : ""}${r.actionDetail ? `<br><small>${esc(r.actionDetail)}</small>` : ""}`
       : "";
     return `<tr>${withLot ? `<td>${r.lot}</td>` : ""}<td>${esc(r.part)}</td><td>${esc(r.name)}</td>
       <td class="num">${esc(r.m1)}</td><td class="num">${esc(r.m2)}</td><td class="num">${round1(r.avg)}</td>
@@ -576,6 +655,16 @@ document.addEventListener("click", async ev => {
     setErr([]);
     renderRows(); renderAll(); return;
   }
+  if (t.dataset.copy != null) {
+    const ta = t.closest(".reqitem").querySelector("textarea");
+    try { await navigator.clipboard.writeText(ta.value); toast("依頼文をコピーしました"); }
+    catch (err) {
+      ta.select();
+      try { document.execCommand("copy"); toast("依頼文をコピーしました"); }
+      catch (err2) { toast("コピーできませんでした。文面を選んでコピーしてください"); }
+    }
+    return;
+  }
   if (t.dataset.del != null) {
     rows().splice(Number(t.dataset.del), 1);
     renderRows(); return;
@@ -616,8 +705,8 @@ $("#rows").addEventListener("input", ev => {
     r.name = el.value; r.nameManual = el.value !== "";
   } else if (k === "m1" || k === "m2") {
     r[k] = el.value;
-  } else if (k === "extra" || k === "detail") {
-    r[k] = el.value;
+  } else if (k === "extra") {
+    r.extra = el.value;
   }
   updateRowOut(i);
 });
@@ -626,7 +715,6 @@ $("#rows").addEventListener("change", ev => {
   const el = ev.target;
   const i = Number(el.closest(".row").dataset.i);
   const r = rows()[i];
-  if (el.dataset.a) { r.acts[el.dataset.a] = el.checked; return; }
   if (el.dataset.k === "part") {
     const c = canonPart(el.value);
     r.part = c || el.value.trim();
@@ -718,33 +806,35 @@ async function saveLot() {
     const row = document.querySelector(`.row[data-i="${i}"]`);
     row?.classList.remove("invalid");
     const c = canonPart(r.part);
-    const hasAct = actionLabels(r).length > 0 || (r.detail || "").trim() !== "";
-    const needAct = e.judge === "NG" && !hasAct;
+    const bad = parseRe(r.extra).bad;
     if (!r.part) errs.push(`${i + 1}行目：品番を入力してください`);
     else if (!c) errs.push(`${i + 1}行目：「${r.part}」は正式品番に照合できません（品番コード一覧にありません）`);
     else if (e.avg == null) errs.push(`${i + 1}行目：測定値①と②を入力してください`);
     else if (!r.spec) errs.push(`${i + 1}行目：規格を選択してください`);
-    else if (needAct) errs.push(`${i + 1}行目：平均が規格外です。処置（n増し・許容・確認など）を記入してください`);
+    else if (bad.length) errs.push(`${i + 1}行目：再測定値「${bad.join("、")}」は数値で入力してください`);
     else valid.push({ r, e, part: c });
-    if (!c || e.avg == null || !r.spec || needAct) row?.classList.add("invalid");
+    if (!c || e.avg == null || !r.spec || bad.length) row?.classList.add("invalid");
   });
   if (errs.length) { setErr(errs); return; }
   if (!valid.length) { toast("保存する行がありません"); return; }
   setErr([]);
+  const warnLines = [];
+  valid.forEach(({ r }) => { const i = list.indexOf(r); rowWarn(r).forEach(w => warnLines.push(`${i + 1}行目（${r.part}）：${w.msg}`)); });
+  if (warnLines.length && !confirm("入力の確認をお願いします。\n\n" + warnLines.join("\n") + "\n\nこのまま保存しますか？")) return;
 
   state.operator = op; safeSet(OP_KEY, op);
   const saved = new Set();
   for (const { r, e, part } of valid) {
-    const ng = e.judge === "NG";
+    const items = computeReq(r, e);
     addRecord({
       lot: state.curLot, part, name: OFFICIAL[part] || r.name || "",
       m1: e.m1, m2: e.m2, avg: e.avg, spec: r.spec,
-      judge: ng ? "NG" : "OK", indivWarn: !!e.indiv,
+      judge: e.judge === "NG" ? "NG" : "OK", indivWarn: !!e.indiv,
       operator: op,
-      action: ng ? actionLabels(r).join("；") : "",
-      actionDetail: ng ? (r.detail || "").trim() : "",
-      extra: ng ? (r.extra || "").trim() : "",
-      deviation: ng ? devText(r, e) : "",
+      action: items.map(x => x.label).join("；"),
+      actionDetail: "",
+      extra: (r.extra || "").trim(),
+      deviation: items.map(x => x.dev).join("；"),
       enteredAt: new Date().toISOString()
     });
     saved.add(r);
