@@ -371,7 +371,9 @@ function parseRe(s) {
   return { vals, bad };
 }
 
-const REQ_LABEL = { remeasure: "n増し再測定依頼", escalate: "異常展開依頼", review: "測定見直し依頼", ok: "再測定：規格内" };
+const REQ_LABEL = { remeasure: "n増し再測定依頼", escalate: "異常展開依頼", review: "測定見直し依頼", ok: "再測定：規格内", notice: "定期検査の案内" };
+// 特定品番の案内（測定値が入ったときに表示・記録。依頼メールは送らない）
+const NOTICE_PARTS = { "13414-52010": "出荷日を確認し、定期検査を進めてください。" };
 const outOf = (v, rg) => v < rg[0] || v > rg[1];
 function reqHead(r, e) {
   const f = v => v == null ? "—" : v;
@@ -386,6 +388,8 @@ function reqHead(r, e) {
 // 入力行から、出すべき依頼文の一覧を作る（type: remeasure / escalate / review / ok）
 function computeReq(r, e) {
   const items = [];
+  const noticeText = NOTICE_PARTS[canonPart(r.part)];
+  if (noticeText && e.avg != null) items.push({ type: "notice", label: REQ_LABEL.notice, dev: noticeText, text: "" });
   const rg = remeasureRange(r.spec);
   const re = parseRe(r.extra).vals;
   const origOut = rg ? [["測定値①", e.m1], ["測定値②", e.m2]].filter(([, v]) => v != null && outOf(v, rg)) : [];
@@ -411,7 +415,7 @@ function computeReq(r, e) {
 
 // 依頼文の表示（コピーできる文面。ok は一行の案内のみ）
 function reqBoxes(items, i) {
-  return items.map(x => x.type === "ok"
+  return items.map(x => (x.type === "ok" || x.type === "notice")
     ? `<div class="reqitem ok"><b>${esc(x.label)}</b>　${esc(x.dev)}</div>`
     : `<div class="reqitem"><div class="reqhead"><b>${esc(x.label)}</b><button type="button" class="btn-s" data-copy="${i}">依頼文をコピー</button></div><textarea readonly rows="${x.text.split("\n").length}" aria-label="${esc(x.label)}の文面">${esc(x.text)}</textarea></div>`
   ).join("");
@@ -481,7 +485,7 @@ function updateRowOut(i) {
   b.textContent = e.judge;
   b.className = "badge " + (e.cls || "muted");
   const items = e.judge === "未入力" ? [] : computeReq(r, e);
-  const need = items.some(x => x.type !== "ok");
+  const need = items.some(x => x.type !== "ok" && x.type !== "notice");
   const rm = el.querySelector('[data-rm]');
   if (rm) rm.hidden = !(need || (r.extra || "").trim() !== "");
   el.querySelector('[data-req]').innerHTML = reqBoxes(items, i);
