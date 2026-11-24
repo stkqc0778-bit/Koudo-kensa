@@ -133,14 +133,14 @@ td.num, th.num{text-align:right}
 body.viewonly .btn-s{display:none}
 .opline{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px}
 .opline select{min-width:160px}
-.rm{grid-column:1 / -1; display:flex; align-items:center; gap:8px; font-size:13px; border-top:1px dashed var(--ng); padding-top:8px}
-.rm label{display:flex; align-items:center; gap:8px; width:100%}
-.rm input{flex:1; min-width:0; font:inherit; font-size:13px; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px}
-.req{grid-column:1 / -1; display:flex; flex-direction:column; gap:8px}
-.reqitem{border:1px solid var(--ng); border-radius:10px; padding:8px 10px; background:var(--ng-soft)}
-.reqitem.ok{border-color:var(--ok); background:var(--ok-soft); font-size:13px; padding:6px 10px}
-.reqhead{display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:13px; color:var(--ng); margin-bottom:6px}
-.reqitem textarea{width:100%; box-sizing:border-box; font:inherit; font-size:12.5px; line-height:1.5; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px; resize:vertical}
+.rm{grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; font-size:13px; border-top:1px dashed var(--ng); padding-top:8px}
+.rm .rmlab{font-weight:700; color:var(--ng)}
+.rm label{display:flex; align-items:center; gap:6px}
+.rm input{width:110px; font:inherit; font-size:13px; color:var(--fg); background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:6px 8px}
+.req{grid-column:1 / -1; display:flex; flex-direction:column; gap:4px}
+.reqline{font-size:13px; font-weight:700; border-radius:6px; padding:4px 8px}
+.reqline.ng{color:var(--ng); background:var(--ng-soft)}
+.reqline.info{color:var(--ok); background:var(--ok-soft)}
 .wrapcell{white-space:normal; min-width:180px; max-width:340px}
 .wrapcell small{color:var(--muted)}
 .pchip[aria-pressed="true"]{background:var(--primary); color:var(--primary-fg); font-weight:700}
@@ -202,7 +202,7 @@ body.viewonly .btn-s{display:none}
       </div>
       <div class="opline"><label for="operator"><b>入力者</b></label><select id="operator"><option value="">選択してください</option><option>夏目</option><option>佐藤</option><option>谷川</option><option>土橋</option></select><span class="hint">この PC で最後に選んだ名前を覚えます</span></div>
       <div id="rows"></div>
-      <p class="hint">平均は①と②の平均で自動計算。判定は平均で行い、個別値が規格外なら「個別値注意」。FC250は個別値が170未満・250超、①②の差が35以上で依頼文を出します（依頼文は保存前にコピーできます）。規格は硬度規格に記載のない品番が FC250（HB174～241）、その他は各規格を自動選択（変更可）。</p>
+      <p class="hint">平均は①と②の平均で自動計算。判定は平均で行い、個別値が規格外なら「個別値注意」。FC250は個別値が170未満・250超、①②の差が35以上で依頼を表示します。再測定値は①②をそれぞれ1つずつ入力します。規格は硬度規格に記載のない品番が FC250（HB174～241）、その他は各規格を自動選択（変更可）。</p>
       <div class="actions"><button type="button" class="primary" id="save">この生産日を保存</button></div>
       <p class="err" id="err" hidden></p>
     </div>
@@ -359,66 +359,45 @@ function rows() {
   if (!state.rowsByLot[k]) state.rowsByLot[k] = [];
   return state.rowsByLot[k];
 }
-const newRow = () => ({ part: "", name: "", m1: "", m2: "", spec: "", nameManual: false, specManual: false, extra: "" });
+const newRow = () => ({ part: "", name: "", m1: "", m2: "", spec: "", nameManual: false, specManual: false, re1: "", re2: "" });
 
-// 再測定値・見直し後の値（カンマ・空白区切り）を読む
-function parseRe(s) {
-  const vals = [], bad = [];
-  String(s || "").split(/[\s,、，;；]+/).filter(Boolean).forEach(t => {
-    const n = Number(t);
-    if (Number.isFinite(n)) vals.push(n); else bad.push(t);
-  });
-  return { vals, bad };
-}
+// 再測定値（①②それぞれ1つの数値）
+const reVals = r => [r.re1, r.re2].map(v => String(v ?? "").trim());
+const reNums = r => reVals(r).filter(v => v !== "").map(Number).filter(n => Number.isFinite(n));
+const reExtra = r => reVals(r).filter(v => v !== "").join(", ");
 
-const REQ_LABEL = { remeasure: "n増し再測定依頼", escalate: "異常展開依頼", review: "測定見直し依頼", ok: "再測定：規格内", notice: "定期検査の案内" };
+// 依頼の表示（短い一行）と記録用の種類
+const REQ_LABEL = {
+  remeasure: "規格外のためn増し再測定依頼",
+  escalate: "再測定でも規格外のため異常展開依頼",
+  review: "バラつきが大きいため測定見直し依頼",
+  ok: "再測定：規格内",
+  notice: "出荷日を確認し、定期検査を進めてください"
+};
 // 特定品番の案内（測定値が入ったときに表示・記録。依頼メールは送らない）
-const NOTICE_PARTS = { "13414-52010": "出荷日を確認し、定期検査を進めてください。" };
+const NOTICE_PARTS = { "13414-52010": true };
 const outOf = (v, rg) => v < rg[0] || v > rg[1];
-function reqHead(r, e) {
-  const f = v => v == null ? "—" : v;
-  return [
-    `生産日：${lotIso(state.curLot)}`,
-    `品番：${canonPart(r.part) || r.part}${r.name ? `（${r.name}）` : ""}`,
-    `規格：${r.spec}`,
-    `測定値：①${f(e.m1)}　②${f(e.m2)}（平均 ${round1(e.avg)}）`
-  ].join("\n");
-}
 
-// 入力行から、出すべき依頼文の一覧を作る（type: remeasure / escalate / review / ok）
+// 入力行から、出すべき依頼の一覧を作る（type: remeasure / escalate / review / ok / notice）
 function computeReq(r, e) {
   const items = [];
-  const noticeText = NOTICE_PARTS[canonPart(r.part)];
-  if (noticeText && e.avg != null) items.push({ type: "notice", label: REQ_LABEL.notice, dev: noticeText, text: "" });
+  if (NOTICE_PARTS[canonPart(r.part)] && e.avg != null) items.push({ type: "notice", label: REQ_LABEL.notice, dev: "出荷日確認・定期検査" });
   const rg = remeasureRange(r.spec);
-  const re = parseRe(r.extra).vals;
+  const re = reNums(r);
   const origOut = rg ? [["測定値①", e.m1], ["測定値②", e.m2]].filter(([, v]) => v != null && outOf(v, rg)) : [];
   const reOut = rg ? re.filter(v => outOf(v, rg)) : [];
-  const head = reqHead(r, e);
-  const range = rg ? `判定範囲 ${rg[0]}～${rg[1]}` : "";
-  if (rg && re.length && reOut.length) {
-    items.push({ type: "escalate", label: REQ_LABEL.escalate, dev: `再測定 規格外 ${reOut.join("、")}`,
-      text: `【硬度 異常の展開依頼】\n${head}\n再測定値：${re.join("、")}\n再測定でも規格外の値があります：${reOut.join("、")}（${range}）\nご依頼：関係者へ異常を展開し、原因の調査と処置のご検討をお願いします。` });
-  } else if (rg && re.length) {
-    items.push({ type: "ok", label: REQ_LABEL.ok, dev: `再測定 ${re.join("、")}（${range}の範囲内）`, text: "" });
-  } else if (origOut.length) {
-    items.push({ type: "remeasure", label: REQ_LABEL.remeasure, dev: `規格外 ${origOut.map(([l, v]) => `${l}${v}`).join("、")}`,
-      text: `【硬度 n増し再測定の依頼】\n${head}\n規格外の個別値：${origOut.map(([l, v]) => `${l} ${v}`).join("、")}（${range}）\nご依頼：同一ロットから n増し（追加測定）を行い、結果を入力画面の「再測定値」欄へ入力してください。` });
-  }
+  if (rg && re.length && reOut.length) items.push({ type: "escalate", label: REQ_LABEL.escalate, dev: `再測定 規格外 ${reOut.join("、")}` });
+  else if (rg && re.length) items.push({ type: "ok", label: REQ_LABEL.ok, dev: `再測定 ${re.join("、")}` });
+  else if (origOut.length) items.push({ type: "remeasure", label: REQ_LABEL.remeasure, dev: `規格外 ${origOut.map(([l, v]) => `${l}${v}`).join("、")}` });
   if (e.m1 != null && e.m2 != null && Math.abs(e.m1 - e.m2) >= DIFF_LIMIT) {
-    const d = round1(Math.abs(e.m1 - e.m2));
-    items.push({ type: "review", label: REQ_LABEL.review, dev: `①と②の差 ${d}`,
-      text: `【硬度 測定の見直しの依頼】\n${head}\n測定値①と②の差：${d}（${DIFF_LIMIT}以上）\nご依頼：測定の見直し（再測定・測定方法・試料の確認）をお願いします。` });
+    items.push({ type: "review", label: REQ_LABEL.review, dev: `①と②の差 ${round1(Math.abs(e.m1 - e.m2))}` });
   }
   return items;
 }
 
-// 依頼文の表示（コピーできる文面。ok は一行の案内のみ）
-function reqBoxes(items, i) {
-  return items.map(x => (x.type === "ok" || x.type === "notice")
-    ? `<div class="reqitem ok"><b>${esc(x.label)}</b>　${esc(x.dev)}</div>`
-    : `<div class="reqitem"><div class="reqhead"><b>${esc(x.label)}</b><button type="button" class="btn-s" data-copy="${i}">依頼文をコピー</button></div><textarea readonly rows="${x.text.split("\n").length}" aria-label="${esc(x.label)}の文面">${esc(x.text)}</textarea></div>`
-  ).join("");
+// 品番の直下に短く表示する
+function reqLines(items) {
+  return items.map(x => `<div class="reqline ${(x.type === "ok" || x.type === "notice") ? "info" : "ng"}">${esc(x.label)}</div>`).join("");
 }
 
 function rowHtml(r, i) {
@@ -435,7 +414,11 @@ function rowHtml(r, i) {
     <select class="c-spec" data-k="spec" aria-label="${n}行目 規格">${opts}</select>
     <span class="badge muted jdg" data-out="judge">未入力</span>
     <button type="button" class="del" data-del="${i}" aria-label="${n}行目を削除">×</button>
-    <div class="rm" data-rm="${i}" hidden><label>再測定値（カンマ区切り）<input data-k="extra" inputmode="decimal" value="${esc(r.extra)}" placeholder="例：205, 208, 211" aria-label="${n}行目 再測定値"></label></div>
+    <div class="rm" data-rm="${i}" hidden>
+      <span class="rmlab">再測定値</span>
+      <label>①<input data-k="re1" type="number" inputmode="decimal" step="0.1" value="${esc(r.re1)}" placeholder="例：205" aria-label="${n}行目 再測定値①"></label>
+      <label>②<input data-k="re2" type="number" inputmode="decimal" step="0.1" value="${esc(r.re2)}" placeholder="例：208" aria-label="${n}行目 再測定値②"></label>
+    </div>
     <div class="req" data-req="${i}"></div>
   </div>`;
 }
@@ -449,13 +432,13 @@ function renderRows() {
   list.forEach((_, i) => updateRowOut(i));
 }
 
-// 測定値の確認：整数部が3桁以外、または測定値①②の差が35以上
+// 測定値の確認：整数部が3桁以外（測定値・再測定値）、または測定値①②の差が35以上
 const DIFF_LIMIT = 35;
 function digitsOf(n) { return String(Math.trunc(Math.abs(n))).length; }
 function rowWarn(r) {
   const out = [];
   const m1 = num(r.m1), m2 = num(r.m2);
-  [["測定値①", m1, r.m1], ["測定値②", m2, r.m2]].forEach(([lab, n, raw]) => {
+  [["測定値①", m1, r.m1], ["測定値②", m2, r.m2], ["再測定値①", num(r.re1), r.re1], ["再測定値②", num(r.re2), r.re2]].forEach(([lab, n, raw]) => {
     if (n != null && digitsOf(n) !== 3) out.push({ kind: "digit", msg: `${lab}「${raw}」は${digitsOf(n)}桁です。入力内容が合っているか確認してください` });
   });
   if (m1 != null && m2 != null && Math.abs(m1 - m2) >= DIFF_LIMIT) {
@@ -487,8 +470,8 @@ function updateRowOut(i) {
   const items = e.judge === "未入力" ? [] : computeReq(r, e);
   const need = items.some(x => x.type !== "ok" && x.type !== "notice");
   const rm = el.querySelector('[data-rm]');
-  if (rm) rm.hidden = !(need || (r.extra || "").trim() !== "");
-  el.querySelector('[data-req]').innerHTML = reqBoxes(items, i);
+  if (rm) rm.hidden = !(need || reVals(r).some(v => v !== ""));
+  el.querySelector('[data-req]').innerHTML = reqLines(items);
   updateInputWarn();
 }
 
@@ -709,8 +692,8 @@ $("#rows").addEventListener("input", ev => {
     r.name = el.value; r.nameManual = el.value !== "";
   } else if (k === "m1" || k === "m2") {
     r[k] = el.value;
-  } else if (k === "extra") {
-    r.extra = el.value;
+  } else if (k === "re1" || k === "re2") {
+    r[k] = el.value;
   }
   updateRowOut(i);
 });
@@ -810,7 +793,7 @@ async function saveLot() {
     const row = document.querySelector(`.row[data-i="${i}"]`);
     row?.classList.remove("invalid");
     const c = canonPart(r.part);
-    const bad = parseRe(r.extra).bad;
+    const bad = reVals(r).filter(v => v !== "" && !Number.isFinite(Number(v)));
     if (!r.part) errs.push(`${i + 1}行目：品番を入力してください`);
     else if (!c) errs.push(`${i + 1}行目：「${r.part}」は正式品番に照合できません（品番コード一覧にありません）`);
     else if (e.avg == null) errs.push(`${i + 1}行目：測定値①と②を入力してください`);
@@ -837,7 +820,7 @@ async function saveLot() {
       operator: op,
       action: items.map(x => x.label).join("；"),
       actionDetail: "",
-      extra: (r.extra || "").trim(),
+      extra: reExtra(r),
       deviation: items.map(x => x.dev).join("；"),
       enteredAt: new Date().toISOString()
     });
