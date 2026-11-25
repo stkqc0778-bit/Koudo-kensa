@@ -141,6 +141,20 @@ body.viewonly .btn-s{display:none}
 .reqline{font-size:13px; font-weight:700; border-radius:6px; padding:4px 8px}
 .reqline.ng{color:var(--ng); background:var(--ng-soft)}
 .reqline.info{color:var(--ok); background:var(--ok-soft)}
+.statgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px}
+.stat{border:1px solid var(--line); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; gap:4px}
+.stat span{font-size:12px; color:var(--muted)}
+.stat b{font-size:17px; font-variant-numeric:tabular-nums}
+.ana-svg{width:100%; height:auto; display:block}
+.ana-svg .grid{stroke:var(--line); stroke-width:1}
+.ana-svg .axt{fill:var(--muted); font-size:11px}
+.ana-svg .gtxt{fill:var(--fg); font-size:11px}
+.ana-svg .gp{fill:#2b6cb0; fill-opacity:.55}
+.ana-svg .gavg{fill:none; stroke:var(--fg); stroke-width:1.6}
+.ana-svg .gl-spec{stroke:#718096; stroke-width:1.2; stroke-dasharray:4 3}
+.ana-svg .gl-re{stroke:var(--ng); stroke-width:1.2; stroke-dasharray:6 4}
+tr.pick{cursor:pointer}
+tr.pick:hover td{background:var(--warn-soft)}
 .wrapcell{white-space:normal; min-width:180px; max-width:340px}
 .wrapcell small{color:var(--muted)}
 .pchip[aria-pressed="true"]{background:var(--primary); color:var(--primary-fg); font-weight:700}
@@ -173,6 +187,7 @@ body.viewonly .btn-s{display:none}
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="entry" aria-selected="true">入力</button>
     <button type="button" role="tab" data-tab="list" aria-selected="false">一覧・CSV書出し</button>
+    <button type="button" role="tab" data-tab="analysis" aria-selected="false">傾向分析</button>
   </nav>
 
   <section id="sec-entry">
@@ -233,6 +248,37 @@ body.viewonly .btn-s{display:none}
       <div class="summary" id="lsum"></div>
       <div class="tw" id="listTable"></div>
     </div>
+  </section>
+
+  <section id="sec-analysis" hidden>
+    <div class="card">
+      <div class="lbl">期間</div>
+      <div class="chips" id="apchips">
+        <button type="button" class="chip apchip" data-apd="30" aria-pressed="false">直近30日</button>
+        <button type="button" class="chip apchip" data-apd="120" aria-pressed="true">直近120日</button>
+        <button type="button" class="chip apchip" data-apd="year" aria-pressed="false">今年</button>
+        <button type="button" class="chip apchip" data-apd="all" aria-pressed="false">全期間（2016年〜）</button>
+      </div>
+      <div class="pbar">
+        <input type="date" id="anaFrom" aria-label="開始日"><span>〜</span><input type="date" id="anaTo" aria-label="終了日">
+        <button type="button" class="ghost" id="anaShow">この期間を表示</button>
+      </div>
+      <div class="lbl" style="margin-top:14px">絞り込み</div>
+      <div class="filters">
+        <input type="search" id="anaPart" list="anaPartList" placeholder="品番（空欄で全品番）" aria-label="品番で絞り込み" autocomplete="off">
+        <datalist id="anaPartList"></datalist>
+        <select id="anaSpec" aria-label="規格で絞り込み"><option value="">規格：すべて</option></select>
+      </div>
+      <div class="summary" id="anaSum"></div>
+    </div>
+    <div class="card"><div class="lbl">集計</div><div class="statgrid" id="anaStats"></div></div>
+    <div class="card">
+      <div class="lbl">測定値の推移</div>
+      <div id="anaChart"></div>
+      <p class="hint" id="anaNote">点：個別値（①②）、線：生産日ごとの平均。規格と依頼の境界線は、規格を1つに絞ったときだけ表示します。</p>
+    </div>
+    <div class="card"><div class="lbl">月別</div><div class="tw" id="anaMonth"></div></div>
+    <div class="card"><div class="lbl">品番別（行を押すと、その品番に絞り込みます）</div><div class="tw" id="anaParts"></div></div>
   </section>
 </div>
 
@@ -719,7 +765,9 @@ function switchTab(name) {
   document.querySelectorAll(".tabs [data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
   $("#sec-entry").hidden = name !== "entry";
   $("#sec-list").hidden = name !== "list";
+  $("#sec-analysis").hidden = name !== "analysis";
   if (name === "list") { if (!state.period) setPeriod("30"); else if (Date.now() - (state.listAt || 0) > 60000) fetchPeriod(); else renderList(); }
+  if (name === "analysis") { if (!state.period) setPeriod("120"); else if (Date.now() - (state.listAt || 0) > 60000) fetchPeriod(); else renderAnalysis(); }
 }
 
 document.querySelectorAll(".pchip").forEach(b => b.addEventListener("click", () => setPeriod(b.dataset.pd)));
@@ -968,8 +1016,8 @@ async function syncNow() {
 
 // 期間指定の一覧：スプレッドシートから取得して画面に表示（端末には保存しない）
 async function fetchPeriod() {
-  state.listState = "loading"; renderList();
-  if (!CFG.syncUrl || !getPass()) { state.listState = "err"; state.listErr = !CFG.syncUrl ? "同期先が未設定です" : "合言葉を入力してください"; renderList(); return; }
+  state.listState = "loading"; renderList(); renderAnalysis();
+  if (!CFG.syncUrl || !getPass()) { state.listState = "err"; state.listErr = !CFG.syncUrl ? "同期先が未設定です" : "合言葉を入力してください"; renderList(); renderAnalysis(); return; }
   try {
     const url = `${CFG.syncUrl}?action=list&from=${state.period.from}&to=${state.period.to}&pass=${encodeURIComponent(getPass())}`;
     const res = await fetch(url, { cache: "no-store" });
@@ -981,7 +1029,169 @@ async function fetchPeriod() {
     authFailed(state.listErr);
   }
   renderList();
+  renderAnalysis();
 }
+
+// ---- 傾向分析（期間・品番・規格で絞り込み） ----
+const ANA = { part: "", spec: "" };
+$("#anaSpec").insertAdjacentHTML("beforeend", SPEC_OPTIONS.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join(""));
+const fx = (v, d = 1) => v == null || !Number.isFinite(v) ? "—" : (Math.round(v * 10 ** d) / 10 ** d).toFixed(d);
+const meanOf = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+const sdOf = a => { if (a.length < 2) return null; const m = meanOf(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); };
+const ymOf = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+function anaRows() {
+  const p = ANA.part.trim().toLowerCase();
+  return listSource()
+    .filter(r => (!p || String(r.part).toLowerCase().includes(p)) && (!ANA.spec || r.spec === ANA.spec))
+    .sort((a, b) => Number(a.lot) - Number(b.lot));
+}
+// 個別値（①②）の一覧
+function indVals(rs) {
+  const out = [];
+  rs.forEach(r => { [num(r.m1), num(r.m2)].forEach(v => { if (v != null) out.push(v); }); });
+  return out;
+}
+// 直線の傾き（平均値の変化／月）
+function slopePerMonth(pts) {
+  if (pts.length < 10) return null;
+  const t0 = pts[0].t;
+  const xs = pts.map(p => (p.t - t0) / (86400000 * 30.44)), ys = pts.map(p => p.y);
+  if (xs[xs.length - 1] - xs[0] < 1) return null;
+  const mx = meanOf(xs), my = meanOf(ys);
+  let sxx = 0, sxy = 0;
+  xs.forEach((x, i) => { sxx += (x - mx) ** 2; sxy += (x - mx) * (ys[i] - my); });
+  return sxx === 0 ? null : sxy / sxx;
+}
+function anaStats(rows) {
+  const ind = indVals(rows);
+  const lotAvg = [];
+  let ng = 0, warn = 0, req = 0, re = 0;
+  rows.forEach(r => {
+    const a = num(r.avg);
+    if (a != null) lotAvg.push({ t: lotDate(Number(r.lot)).getTime(), y: a });
+    if (r.judge === "NG") ng++;
+    if (r.indivWarn) warn++;
+    if (String(r.action || "").includes("依頼")) req++;
+    if (String(r.extra || "").trim()) re++;
+  });
+  return {
+    n: rows.length, avgMean: meanOf(lotAvg.map(p => p.y)), indMean: meanOf(ind), indSd: sdOf(ind),
+    indMin: ind.length ? ind.reduce((a, b) => Math.min(a, b), Infinity) : null,
+    indMax: ind.length ? ind.reduce((a, b) => Math.max(a, b), -Infinity) : null,
+    ng, warn, req, re, slope: slopePerMonth(lotAvg)
+  };
+}
+function statCards(st) {
+  const pct = st.n ? `（${(st.ng / st.n * 100).toFixed(1)}%）` : "";
+  const cards = [
+    ["件数", `${st.n}`],
+    ["平均値の平均", fx(st.avgMean)],
+    ["個別値 平均", fx(st.indMean)],
+    ["個別値 標準偏差", fx(st.indSd)],
+    ["個別値 最小〜最大", st.indMin == null ? "—" : `${fx(st.indMin, 0)}〜${fx(st.indMax, 0)}`],
+    ["NG", `${st.ng}件${pct}`],
+    ["個別値注意", `${st.warn}件`],
+    ["依頼", `${st.req}件`],
+    ["再測定", `${st.re}件`],
+    ["平均値の変化", st.slope == null ? "—" : `${st.slope >= 0 ? "+" : ""}${fx(st.slope, 2)} /月`]
+  ];
+  return cards.map(([k, v]) => `<div class="stat"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+}
+function anaChart(rows) {
+  const pts = [];
+  rows.forEach(r => { const t = lotDate(Number(r.lot)).getTime(); [num(r.m1), num(r.m2)].forEach(v => { if (v != null) pts.push({ t, y: v }); }); });
+  if (pts.length < 2) return `<p class="hint">グラフにする測定値がありません。</p>`;
+  const W = 640, H = 280, PL = 46, PR = 14, PT = 14, PB = 30;
+  const t0 = pts.reduce((a, p) => Math.min(a, p.t), Infinity), t1 = pts.reduce((a, p) => Math.max(a, p.t), -Infinity);
+  let y0 = pts.reduce((a, p) => Math.min(a, p.y), Infinity), y1 = pts.reduce((a, p) => Math.max(a, p.y), -Infinity);
+  const specs = [...new Set(rows.map(r => r.spec).filter(Boolean))];
+  const guide = [];
+  if (specs.length === 1) {
+    const sr = SPEC_RANGES[specs[0]], rg = remeasureRange(specs[0]);
+    if (sr) guide.push({ y: sr[0], cls: "gl-spec", label: `規格 ${sr[0]}` }, { y: sr[1], cls: "gl-spec", label: `規格 ${sr[1]}` });
+    if (rg) guide.push({ y: rg[0], cls: "gl-re", label: `依頼 ${rg[0]}` }, { y: rg[1], cls: "gl-re", label: `依頼 ${rg[1]}` });
+    guide.forEach(g => { y0 = Math.min(y0, g.y); y1 = Math.max(y1, g.y); });
+  }
+  const pad = (y1 - y0) * 0.08 || 5; y0 -= pad; y1 += pad;
+  const X = t => PL + (t1 === t0 ? 0.5 : (t - t0) / (t1 - t0)) * (W - PL - PR);
+  const Y = v => PT + (1 - (v - y0) / (y1 - y0)) * (H - PT - PB);
+  const dots = pts.map(p => `<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="2.2" class="gp"/>`).join("");
+  const byLot = {};
+  rows.forEach(r => { const v = indVals([r]); if (!v.length) return; byLot[r.lot] = (byLot[r.lot] || []).concat(v); });
+  const line = Object.keys(byLot).sort((a, b) => a - b).map(l => [X(lotDate(Number(l)).getTime()), Y(meanOf(byLot[l]))]);
+  const poly = line.length > 1 ? `<polyline class="gavg" points="${line.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")}"/>` : "";
+  const gl = guide.map(g => `<line x1="${PL}" x2="${W - PR}" y1="${Y(g.y).toFixed(1)}" y2="${Y(g.y).toFixed(1)}" class="${g.cls}"/><text x="${W - PR}" y="${(Y(g.y) - 3).toFixed(1)}" text-anchor="end" class="gtxt">${esc(g.label)}</text>`).join("");
+  const ticks = [0, 1, 2, 3, 4].map(k => { const v = y0 + (y1 - y0) * k / 4; return `<line x1="${PL}" x2="${W - PR}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" class="grid"/><text x="${PL - 6}" y="${(Y(v) + 4).toFixed(1)}" text-anchor="end" class="axt">${Math.round(v)}</text>`; }).join("");
+  const xl = `<text x="${PL}" y="${H - 8}" class="axt">${esc(ymOf(t0))}</text><text x="${W - PR}" y="${H - 8}" text-anchor="end" class="axt">${esc(ymOf(t1))}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="測定値の推移" class="ana-svg">${ticks}${gl}${dots}${poly}${xl}</svg>`;
+}
+function groupStats(rs) {
+  const ind = indVals(rs);
+  const avgs = rs.map(r => num(r.avg)).filter(x => x != null);
+  return {
+    n: rs.length, avg: meanOf(avgs), sd: sdOf(ind),
+    min: ind.length ? ind.reduce((a, b) => Math.min(a, b), Infinity) : null,
+    max: ind.length ? ind.reduce((a, b) => Math.max(a, b), -Infinity) : null,
+    ng: rs.filter(r => r.judge === "NG").length,
+    req: rs.filter(r => String(r.action || "").includes("依頼")).length
+  };
+}
+function monthTable(rows) {
+  const g = {};
+  rows.forEach(r => { const k = Math.floor(Number(r.lot) / 100); g[k] = (g[k] || []).concat([r]); });
+  const keys = Object.keys(g).sort((a, b) => b - a);
+  if (!keys.length) return `<p class="hint">該当する記録はありません。</p>`;
+  const body = keys.map(k => {
+    const s = groupStats(g[k]);
+    const ym = `20${String(Math.floor(k / 100)).padStart(2, "0")}-${String(k % 100).padStart(2, "0")}`;
+    return `<tr><td>${ym}</td><td class="num">${s.n}</td><td class="num">${fx(s.avg)}</td><td class="num">${fx(s.sd)}</td><td class="num">${fx(s.min, 0)}</td><td class="num">${fx(s.max, 0)}</td><td class="num">${s.ng}</td><td class="num">${s.req}</td></tr>`;
+  }).join("");
+  return `<table><thead><tr><th>年月</th><th class="num">件数</th><th class="num">平均</th><th class="num">個別SD</th><th class="num">最小</th><th class="num">最大</th><th class="num">NG</th><th class="num">依頼</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function partTable(rows) {
+  const g = {};
+  rows.forEach(r => { const k = String(r.part || ""); if (!g[k]) g[k] = { part: k, name: r.name || "", rs: [] }; g[k].rs.push(r); });
+  const list = Object.values(g).sort((a, b) => b.rs.length - a.rs.length).slice(0, 100);
+  if (!list.length) return `<p class="hint">該当する記録はありません。</p>`;
+  const body = list.map(p => {
+    const s = groupStats(p.rs);
+    return `<tr class="pick" data-apart="${esc(p.part)}"><td>${esc(p.part)}</td><td>${esc(p.name)}</td><td class="num">${s.n}</td><td class="num">${fx(s.avg)}</td><td class="num">${fx(s.sd)}</td><td class="num">${s.ng}</td><td class="num">${s.req}</td></tr>`;
+  }).join("");
+  return `<table><thead><tr><th>品番</th><th>品名</th><th class="num">件数</th><th class="num">平均</th><th class="num">個別SD</th><th class="num">NG</th><th class="num">依頼</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderAnalysis() {
+  if (!$("#sec-analysis")) return;
+  document.querySelectorAll(".apchip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.apd === state.periodKind)));
+  const rows = anaRows();
+  const parts = [...new Set(listSource().map(r => String(r.part)).filter(Boolean))].sort();
+  $("#anaPartList").innerHTML = parts.map(p => `<option value="${esc(p)}">`).join("");
+  const label = state.period ? state.period.label : "";
+  const loading = state.listState === "loading" ? "　読み込み中…" : state.listState === "err" ? `　読み込みエラー：${esc(state.listErr)}` : "";
+  const scope = `${ANA.part ? `品番に「${esc(ANA.part)}」を含む` : "全品番"}・${ANA.spec ? `規格 ${esc(ANA.spec)}` : "規格すべて"}`;
+  $("#anaSum").innerHTML = `${esc(label)}／${scope}：該当 ${rows.length} 件${loading}`;
+  $("#anaStats").innerHTML = statCards(anaStats(rows));
+  $("#anaChart").innerHTML = rows.length ? anaChart(rows) : `<p class="hint">該当する記録はありません。</p>`;
+  $("#anaMonth").innerHTML = monthTable(rows);
+  $("#anaParts").innerHTML = partTable(rows);
+}
+document.querySelectorAll(".apchip").forEach(b => b.addEventListener("click", () => { setPeriod(b.dataset.apd); renderAnalysis(); }));
+$("#anaShow").addEventListener("click", () => {
+  const f = $("#anaFrom").value, to = $("#anaTo").value;
+  if (!f || !to) { toast("開始日と終了日を入れてください"); return; }
+  const a = isoToLot(f), z = isoToLot(to);
+  if (a > z) { toast("開始日が終了日より後になっています"); return; }
+  state.periodKind = "custom";
+  state.period = { from: a, to: z, label: `${f} 〜 ${to}` };
+  fetchPeriod();
+});
+$("#anaPart").addEventListener("input", e => { ANA.part = e.target.value; renderAnalysis(); });
+$("#anaSpec").addEventListener("change", e => { ANA.spec = e.target.value; renderAnalysis(); });
+$("#anaParts").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-apart]");
+  if (!tr) return;
+  ANA.part = tr.dataset.apart; $("#anaPart").value = ANA.part;
+  renderAnalysis();
+});
 
 // ---- 合言葉 ----
 function showGate(msg) {
